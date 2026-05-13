@@ -22,7 +22,7 @@
 发布到 GitHub 后，用这个地址导入 Loon：
 
 ```text
-https://raw.githubusercontent.com/hhh13728772988-commits/loon-netflix-zh-subtitles/main/netflix-zh-subtitles.plugin
+https://raw.githubusercontent.com/sechs6666code/loon-netflix-zh-subtitles/main/netflix-zh-subtitles.plugin
 ```
 
 在 Loon 插件参数里配置：
@@ -77,7 +77,7 @@ npm test
 git init -b main
 git add .
 git commit -m "Initial Loon Netflix subtitle translator"
-git remote add origin https://github.com/hhh13728772988-commits/loon-netflix-zh-subtitles.git
+git remote add origin https://github.com/sechs6666code/loon-netflix-zh-subtitles.git
 git push -u origin main
 ```
 
