@@ -12,7 +12,7 @@
 #!select = debug,false,true
 
 [Script]
-http-response ^https?:\/\/[^\/]+\.nflxvideo\.net\/\?.*o=\d+.*v=\d+.*e=.+ requires-body=true,max-size=0,timeout=60,script-path=https://raw.githubusercontent.com/sechs6666code/loon-netflix-zh-subtitles/main/scripts/netflix-zh-subtitles.js,tag=Netflix 中文字幕翻译,enable=true
+http-response ^https?:\/\/[^\/]+\.nflxvideo\.net\/\?.+ requires-body=1,max-size=0,timeout=60,script-path=https://raw.githubusercontent.com/sechs6666code/loon-netflix-zh-subtitles/main/scripts/netflix-zh-subtitles.js,tag=Netflix 中文字幕翻译,argument=provider=google_web&targetVariant=zh-Hans&debug=true,enable=true
 
 [MITM]
 hostname = ios.prod.ftl.netflix.com,*.nflxvideo.net
