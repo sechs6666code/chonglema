@@ -94,7 +94,9 @@ git push -u origin main
 
 - 插件无法导入：确认 raw URL 可直接打开，且文件名是 `netflix-zh-subtitles.plugin`。
 - 没有字幕变化：确认 Netflix 里已经选择了一个可用字幕轨。
-- 没有脚本日志：确认 `[MITM]` 里包含 `*.netflix.com, *.nflxvideo.net`，并且 Loon 的 MitM/Script 开关已开启。
+- 没有脚本日志：确认 `[MITM]` 里包含 `ios.prod.ftl.netflix.com, *.nflxvideo.net`，并且 Loon 的 MitM/Script 开关已开启。
+- 有 `hit status=...` 日志但没有 `subtitle format=...`：说明已经命中 Netflix 资源，但响应不是 WebVTT/TTML 字幕体。把日志里的 `unsupported response sample=...` 发出来继续定位。
+- 使用 `google_web` 没效果：脚本会先批量翻译，若 Google 没保留批量标记，会自动降级逐句翻译。逐句仍失败时建议换 `google_v2` 或 DeepL API Key 验证。
 - API 报错：确认 provider 与 API Key 类型匹配，例如 DeepL Free Key 必须使用 `deepl_free`；如果没有 Key，先用 `google_web`。
 - 播放中断或字幕消失：关闭插件后重试；本脚本翻译失败时应回退原字幕，不应阻断播放。
 

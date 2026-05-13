@@ -211,12 +211,15 @@
     }
 
     var body = bodyToString(response.body);
+    debug(env, options, "hit status=" + (response.status || "unknown") + " bytes=" + body.length + " content-type=" + getHeader(response.headers || {}, "content-type") + " url=" + stripUrlQuery(url));
     if (!body) {
+      debug(env, options, "empty response body");
       return {};
     }
 
     var format = detectSubtitleFormat(body, url, response.headers || {});
     if (!format) {
+      debug(env, options, "unsupported response sample=" + compactSample(body));
       if (detectNoSubtitleManifest(body)) {
         notifyOnce(env, "no-subtitle-source", "影片没有可处理的字幕轨", "此方案不从音频生成字幕。");
       }
@@ -267,6 +270,13 @@
 
   function stripUrlQuery(url) {
     return String(url || "").split("?")[0];
+  }
+
+  function compactSample(body) {
+    return String(body || "")
+      .slice(0, 220)
+      .replace(/\s+/g, " ")
+      .replace(/[^\x20-\x7E\u3400-\u9FFF\uF900-\uFAFF]/g, "?");
   }
 
   function bodyToString(body) {
@@ -606,7 +616,30 @@
       return mapped[index] || text;
     });
     if (translations.some(function (translation, index) { return translation === texts[index]; })) {
-      throw new Error("Google Web response did not preserve subtitle markers");
+      return translateWithGoogleWebOneByOne(texts, options, env);
+    }
+    return translations;
+  }
+
+  async function translateWithGoogleWebOneByOne(texts, options, env) {
+    var translations = [];
+    for (var i = 0; i < texts.length; i += 1) {
+      var response = await env.httpPost({
+        url: "https://translate.google.com/translate_a/single?client=it&dt=t&dj=1&hl=en&ie=UTF-8&oe=UTF-8&sl=auto&tl=" + encodeURIComponent(options.translatorTarget),
+        headers: {
+          "Content-Type": "application/x-www-form-urlencoded",
+          "User-Agent": "GoogleTranslate/6.29.59279 (iPhone; iOS 15.4; en; iPhone14,2)"
+        },
+        body: "q=" + encodeURIComponent(texts[i]),
+        timeout: options.timeoutMs
+      });
+      assertHttpOk(response, "Google Web Translate");
+      var json = safeJsonParse(response.body);
+      if (!json || !Array.isArray(json.sentences)) throw new Error("Google Web single response missing translations");
+      var translated = json.sentences.map(function (item) {
+        return item && item.trans ? String(item.trans) : "";
+      }).join("").trim();
+      translations.push(translated || texts[i]);
     }
     return translations;
   }

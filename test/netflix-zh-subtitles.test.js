@@ -263,6 +263,31 @@ test("google_web maps multiple marked subtitles from one translated sentence", a
   assert.deepEqual(translated, ["你好", "早上好"]);
 });
 
+test("google_web falls back to one-by-one translation when markers are lost", async () => {
+  let calls = 0;
+  const env = makeEnv({
+    async httpPost() {
+      calls += 1;
+      if (calls === 1) {
+        return {
+          status: 200,
+          body: JSON.stringify({ sentences: [{ trans: "你好 早上好" }] })
+        };
+      }
+      return {
+        status: 200,
+        body: JSON.stringify({ sentences: [{ trans: calls === 2 ? "你好" : "早上好" }] })
+      };
+    }
+  });
+  const options = subtitles.parseArgument({ provider: "google_web", apiKey: "", targetVariant: "zh-Hans" }, env);
+
+  const translated = await subtitles.translateBatchExternal(["Hello", "Good morning"], options, env);
+
+  assert.deepEqual(translated, ["你好", "早上好"]);
+  assert.equal(calls, 3);
+});
+
 test("detects no-subtitle manifests and notifies without mutating response", async () => {
   const env = makeEnv();
   const result = await subtitles.processResponse({

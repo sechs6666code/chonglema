@@ -6,15 +6,13 @@
 #!system = iOS,iPadOS
 #!loon_version = 3.2.1(733)
 #!tag = Netflix,字幕,翻译
-
-[Argument]
-provider = select,"google_web","deepl_free","deepl_pro","google_v2",tag=翻译服务,desc=google_web 免 API Key 但不稳定；deepl_free/deepl_pro/google_v2 需要对应 API Key。
-apiKey = input,"",tag=API Key,desc=provider 为 google_web 时留空；其他 provider 填写 DeepL Auth Key 或 Google Cloud Translation API Key。不要把 Key 提交到 GitHub。
-targetVariant = select,"zh-Hans","zh-Hant",tag=目标中文,desc=zh-Hans 为简体中文；zh-Hant 为繁体中文。
-debug = switch,false,tag=调试日志,desc=开启后会在 Loon 日志里输出字幕识别、翻译批次和回退信息。
+#!select = provider,google_web,deepl_free,deepl_pro,google_v2
+#!input = apiKey
+#!select = targetVariant,zh-Hans,zh-Hant
+#!select = debug,false,true
 
 [Script]
-http-response https:\/\/.+nflxvideo\.net\/\?o=\d+&v=\d+&e=.+ requires-body=1,max-size=0,timeout=60,script-path=https://raw.githubusercontent.com/sechs6666code/loon-netflix-zh-subtitles/main/scripts/netflix-zh-subtitles.js,tag=Netflix 中文字幕翻译,argument=[{provider},{apiKey},{targetVariant},{debug}],enable=true
+http-response ^https?:\/\/[^\/]+\.nflxvideo\.net\/\?.*o=\d+.*v=\d+.*e=.+ requires-body=true,max-size=0,timeout=60,script-path=https://raw.githubusercontent.com/sechs6666code/loon-netflix-zh-subtitles/main/scripts/netflix-zh-subtitles.js,tag=Netflix 中文字幕翻译,enable=true
 
 [MITM]
-hostname = *.nflxvideo.net
+hostname = ios.prod.ftl.netflix.com,*.nflxvideo.net
