@@ -19,10 +19,10 @@
 
 ## 安装
 
-发布到 GitHub 后，把插件里的 `<GitHubOwner>` 替换成你的 GitHub 用户名或组织名，然后用这个地址导入 Loon：
+发布到 GitHub 后，用这个地址导入 Loon：
 
 ```text
-https://raw.githubusercontent.com/<GitHubOwner>/loon-netflix-zh-subtitles/main/netflix-zh-subtitles.plugin
+https://raw.githubusercontent.com/hhh13728772988-commits/loon-netflix-zh-subtitles/main/netflix-zh-subtitles.plugin
 ```
 
 在 Loon 插件参数里配置：
@@ -77,11 +77,11 @@ npm test
 git init -b main
 git add .
 git commit -m "Initial Loon Netflix subtitle translator"
-git remote add origin https://github.com/<GitHubOwner>/loon-netflix-zh-subtitles.git
+git remote add origin https://github.com/hhh13728772988-commits/loon-netflix-zh-subtitles.git
 git push -u origin main
 ```
 
-推送前必须先把 `netflix-zh-subtitles.plugin` 中的 `<GitHubOwner>` 替换为真实 GitHub owner。
+推送前确认 `netflix-zh-subtitles.plugin` 中的 raw URL 指向你的真实 GitHub owner。
 
 ## 故障排查
 
