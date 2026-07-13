@@ -156,8 +156,16 @@
   z-index: 1;
   inset: 0;
   overflow: hidden;
-  -webkit-mask: url("./recovery-mask.png") center / 100% 100% no-repeat;
-  mask: url("./recovery-mask.png") center / 100% 100% no-repeat;
+  -webkit-mask-image: url("./recovery-mask-alpha.png");
+  -webkit-mask-position: center;
+  -webkit-mask-size: 100% 100%;
+  -webkit-mask-repeat: no-repeat;
+  -webkit-mask-mode: alpha;
+  mask-image: url("./recovery-mask-alpha.png");
+  mask-position: center;
+  mask-size: 100% 100%;
+  mask-repeat: no-repeat;
+  mask-mode: alpha;
 }
 
 .recovery-liquid-fill {
