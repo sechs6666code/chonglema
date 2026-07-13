@@ -1,0 +1,514 @@
+/*
+ * Final interaction and visual refinement layer.
+ * Keeps the existing warm Apple/Claude language while tightening the first
+ * screen, simplifying the completed state, and adding restrained motion.
+ */
+
+:root {
+  --motion-spring: cubic-bezier(.2, .82, .2, 1);
+  --motion-soft: cubic-bezier(.22, .7, .24, 1);
+}
+
+body {
+  font-feature-settings: "kern" 1, "tnum" 1;
+  text-rendering: optimizeLegibility;
+}
+
+/* 1 · A tighter first screen */
+.topbar {
+  height: 70px;
+}
+
+.hero {
+  margin-top: 30px;
+}
+
+.hero .date {
+  min-height: 34px;
+  margin-bottom: 10px;
+  padding: 6px 14px;
+  font-size: 15px;
+}
+
+.hero h1 {
+  font-size: clamp(50px, 7vw, 72px);
+  line-height: .99;
+}
+
+.subline {
+  margin: 10px auto 20px;
+  font-size: 15px;
+  font-weight: 540;
+}
+
+.answer {
+  min-height: 98px;
+  transition:
+    transform 180ms var(--motion-spring),
+    opacity 220ms ease,
+    box-shadow 220ms ease,
+    border-color 220ms ease,
+    background 260ms ease;
+}
+
+.stats {
+  margin-top: 24px;
+}
+
+/* 2 · Completed check-in becomes one quiet, editable status card */
+.check-actions {
+  position: relative;
+  transition: grid-template-columns 320ms var(--motion-spring), gap 240ms ease;
+}
+
+.hero.completed:not(.motion-editing) .check-actions {
+  grid-template-columns: 1fr;
+  max-width: 620px;
+  margin-inline: auto;
+}
+
+.hero.completed:not(.motion-editing) .answer:not(.selected) {
+  position: absolute;
+  inset: 0;
+  visibility: hidden;
+  opacity: 0;
+  pointer-events: none;
+  transform: translateY(8px) scale(.97);
+}
+
+.hero.completed:not(.motion-editing) .answer.selected {
+  width: 100%;
+  min-height: 82px;
+  padding-block: 12px;
+  cursor: pointer;
+  animation: completedCardIn 440ms var(--motion-spring) both;
+}
+
+.hero.completed:not(.motion-editing) .answer.selected small {
+  color: color-mix(in srgb, currentColor 62%, var(--muted));
+}
+
+.hero.completed.motion-editing .check-actions {
+  animation: editChoicesIn 320ms var(--motion-spring) both;
+}
+
+.hero.completed.motion-editing .answer {
+  visibility: visible;
+  opacity: 1;
+}
+
+@keyframes completedCardIn {
+  from { opacity: .35; transform: translateY(8px) scale(.985); }
+  to { opacity: 1; transform: none; }
+}
+
+@keyframes editChoicesIn {
+  from { opacity: .45; transform: translateY(-5px) scale(.985); }
+  to { opacity: 1; transform: none; }
+}
+
+/* 3 · More tactile buttons and a soft result wash */
+.answer:active,
+.history-actions button:active,
+.month-grid > button:active {
+  transform: scale(.98);
+  transition-duration: 90ms;
+}
+
+.answer::after {
+  content: "";
+  position: absolute;
+  z-index: 0;
+  inset: -55%;
+  border-radius: 50%;
+  opacity: 0;
+  pointer-events: none;
+  transform: scale(.52);
+}
+
+.answer.no::after {
+  background: radial-gradient(circle, rgba(49, 198, 139, .26), transparent 64%);
+}
+
+.answer.yes::after {
+  background: radial-gradient(circle, rgba(237, 116, 104, .22), transparent 64%);
+}
+
+.answer.just-saved::after {
+  animation: answerWash 580ms var(--motion-soft);
+}
+
+@keyframes answerWash {
+  0% { opacity: 0; transform: scale(.45); }
+  38% { opacity: 1; }
+  100% { opacity: 0; transform: scale(1); }
+}
+
+/* 4 · Better balance inside the distribution / streak card */
+.streak-card {
+  grid-template-columns: .94fr 1.06fr;
+  gap: 0;
+  padding: 22px 18px;
+}
+
+.wellness-side {
+  min-height: 196px;
+  padding-inline: 16px;
+}
+
+.wellness-side > span {
+  margin-bottom: 12px;
+  font-size: 14px;
+  font-weight: 620;
+}
+
+.ring-side {
+  padding-left: 28px;
+}
+
+.pie-chart,
+.ring-side .progress-ring,
+.ring-side .progress-ring svg {
+  width: 124px;
+  height: 124px;
+}
+
+.pie-center {
+  width: 80px;
+  height: 80px;
+}
+
+.pie-legend,
+.ring-side .milestone-note {
+  font-size: 11px;
+}
+
+/* 5 · Horizontal month gesture, edge previews and a spring return */
+.history {
+  overflow: hidden;
+}
+
+.calendar-month {
+  position: relative;
+  overflow: visible;
+  isolation: isolate;
+  transform: translate3d(var(--calendar-drag-x, 0), 0, 0);
+  transition: transform 280ms var(--motion-spring), opacity 220ms ease;
+  will-change: transform;
+}
+
+.calendar-month::before,
+.calendar-month::after {
+  content: "";
+  position: absolute;
+  z-index: -1;
+  top: 42px;
+  bottom: 10px;
+  width: 16px;
+  border: 1px solid color-mix(in srgb, var(--line) 80%, transparent);
+  border-radius: 16px;
+  background: color-mix(in srgb, var(--solid) 58%, transparent);
+  opacity: .58;
+  box-shadow: 0 10px 24px rgba(56, 87, 71, .05);
+}
+
+.calendar-month::before { left: -27px; }
+.calendar-month::after { right: -27px; }
+
+.calendar-month.is-dragging {
+  transition: none;
+}
+
+.calendar-month.is-snapping {
+  animation: calendarSnap 380ms var(--motion-spring);
+}
+
+@keyframes calendarSnap {
+  0% { transform: translate3d(var(--calendar-release-x, 0), 0, 0); }
+  72% { transform: translate3d(calc(var(--calendar-release-x, 0) * -.08), 0, 0); }
+  100% { transform: none; }
+}
+
+/* 6 · The history sheet visually grows from the chosen date */
+.history-panel {
+  transform-origin: var(--history-origin-x, 50%) 100%;
+  animation: historyFromCell 400ms var(--motion-spring);
+}
+
+@keyframes historyFromCell {
+  from {
+    opacity: .35;
+    transform: translateY(42px) scale(.94);
+    border-radius: 36px 36px 0 0;
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+/* 7 · Numbers roll only when their underlying value changes */
+.motion-number-changing {
+  animation: numberRoll 430ms var(--motion-spring);
+  transform-origin: 50% 70%;
+}
+
+@keyframes numberRoll {
+  0% { opacity: .28; transform: translateY(8px); filter: blur(2px); }
+  58% { opacity: 1; transform: translateY(-1px); filter: blur(0); }
+  100% { transform: none; }
+}
+
+/* 8 · Refined ambient movement using the existing background lights */
+.aurora {
+  filter: blur(12px);
+  opacity: .58;
+  will-change: transform;
+}
+
+.aurora.one {
+  animation: ambientMint 18s ease-in-out infinite alternate;
+}
+
+.aurora.two {
+  animation: ambientWarm 22s 1.2s ease-in-out infinite alternate;
+}
+
+@media (prefers-color-scheme: light) {
+  .aurora.one {
+    background: radial-gradient(circle, rgba(137, 220, 190, .34), rgba(240, 244, 239, 0) 68%);
+  }
+
+  .aurora.two {
+    background: radial-gradient(circle, rgba(222, 207, 187, .3), rgba(240, 244, 239, 0) 68%);
+  }
+}
+
+@keyframes ambientMint {
+  from { transform: translate3d(-5px, -4px, 0) scale(1); }
+  to { transform: translate3d(18px, 14px, 0) scale(1.06); }
+}
+
+@keyframes ambientWarm {
+  from { transform: translate3d(7px, -6px, 0) scale(1.02); }
+  to { transform: translate3d(-16px, 18px, 0) scale(1.08); }
+}
+
+/* 9 · One measured entrance rhythm instead of several competing ones */
+.topbar,
+.hero,
+.stats,
+.month-summary,
+.history {
+  animation: none;
+}
+
+.motion-card {
+  opacity: 0;
+  transform: translateY(12px) scale(.988);
+}
+
+.motion-card.motion-enter {
+  animation: refinedCardIn 300ms var(--motion-soft) both;
+  animation-delay: calc(var(--motion-index, 0) * 40ms);
+}
+
+@keyframes refinedCardIn {
+  to { opacity: 1; transform: none; }
+}
+
+/* 10 · Today is announced once, then stays quiet */
+.history .calendar-day.today.motion-today-pulse {
+  animation: todayOutline 900ms var(--motion-soft);
+}
+
+@keyframes todayOutline {
+  0% { box-shadow: inset 0 0 0 2px rgba(85, 173, 152, .25), 0 0 0 0 rgba(85, 173, 152, .28); }
+  58% { box-shadow: inset 0 0 0 2px rgba(85, 173, 152, .55), 0 0 0 8px rgba(85, 173, 152, 0); }
+  100% { box-shadow: inset 0 0 0 2px rgba(85, 173, 152, .4), 0 0 0 0 rgba(85, 173, 152, 0); }
+}
+
+/* 11 · A clearer, more consistent type hierarchy */
+.answer small,
+.section-head span,
+.stat-note,
+.milestone-note,
+.month-summary {
+  font-size: 13px;
+}
+
+.stat-card > span,
+.wellness-side > span {
+  font-size: 14px;
+}
+
+.stats strong,
+.pie-center strong,
+.progress-ring strong,
+.calendar-day {
+  font-variant-numeric: tabular-nums;
+}
+
+.section-head h2 {
+  font-size: 26px;
+  font-weight: 700;
+}
+
+.calendar-weekdays span {
+  font-size: 11px;
+}
+
+.legend {
+  font-size: 11px;
+}
+
+@media (width <= 680px) {
+  .shell {
+    padding-inline: 15px;
+  }
+
+  .topbar {
+    height: 58px;
+  }
+
+  .hero {
+    margin-top: 22px;
+  }
+
+  .hero .date {
+    min-height: 34px;
+    margin-bottom: 9px;
+    font-size: 14px;
+  }
+
+  .hero h1 {
+    font-size: 46px;
+  }
+
+  .subline {
+    margin: 10px auto 18px;
+    font-size: 14px;
+  }
+
+  .answer {
+    min-height: 82px;
+    padding: 12px 15px;
+  }
+
+  .answer-icon {
+    width: 48px;
+    height: 48px;
+    border-radius: 16px;
+  }
+
+  .answer b {
+    font-size: 20px;
+  }
+
+  .answer small {
+    margin-top: 3px;
+    font-size: 13px;
+  }
+
+  .hero.completed:not(.motion-editing) .answer.selected {
+    min-height: 76px;
+  }
+
+  .hero.completed.motion-editing .check-actions {
+    grid-template-columns: 1fr;
+  }
+
+  .stats {
+    margin-top: 20px;
+  }
+
+  .streak-card {
+    min-height: 178px;
+    padding: 13px 6px;
+  }
+
+  .wellness-side {
+    min-height: 150px;
+    padding-inline: 8px;
+  }
+
+  .wellness-side > span {
+    margin-bottom: 7px;
+    font-size: 14px;
+  }
+
+  .ring-side {
+    padding-left: 12px;
+  }
+
+  .pie-chart,
+  .ring-side .progress-ring,
+  .ring-side .progress-ring svg {
+    width: 98px;
+    height: 98px;
+  }
+
+  .pie-center {
+    width: 64px;
+    height: 64px;
+  }
+
+  .pie-legend,
+  .ring-side .milestone-note {
+    font-size: 10px;
+  }
+
+  .stat-card > span {
+    font-size: 14px;
+  }
+
+  .stat-note,
+  .month-summary {
+    font-size: 13px;
+  }
+
+  .history {
+    margin-top: 40px;
+    padding: 21px 17px;
+  }
+
+  .section-head h2 {
+    font-size: 23px;
+  }
+
+  .section-head span {
+    font-size: 13px;
+  }
+
+  .calendar-weekdays span,
+  .legend {
+    font-size: 10px;
+  }
+
+  .calendar-month::before,
+  .calendar-month::after {
+    width: 12px;
+    border-radius: 12px;
+  }
+
+  .calendar-month::before { left: -22px; }
+  .calendar-month::after { right: -22px; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .aurora,
+  .answer,
+  .calendar-month,
+  .history-panel,
+  .motion-card,
+  .motion-number-changing,
+  .motion-today-pulse {
+    animation: none !important;
+    transition-duration: .01ms !important;
+  }
+
+  .motion-card {
+    opacity: 1;
+    transform: none;
+  }
+}
