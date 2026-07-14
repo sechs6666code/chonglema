@@ -5,7 +5,11 @@
   const RECOVERY_KEY = "chonglema-recovery-v1";
   const MOTION_KEY = "chonglema-recovery-motion-v1";
   const MOTION_HINT_KEY = "chonglema-recovery-motion-hint-v1";
+  const MOTION_CALIBRATION_COUNT = 7;
   const reducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)");
+  const lowPerformanceDevice =
+    (Number(navigator.hardwareConcurrency) > 0 && Number(navigator.hardwareConcurrency) <= 4) ||
+    (Number(navigator.deviceMemory) > 0 && Number(navigator.deviceMemory) <= 4);
 
   const stages = [
     { label: "刚刚释放", maximum: 20 },
@@ -50,9 +54,14 @@
   let motionFrame = 0;
   let motionLastFrame = 0;
   let motionBaseline = null;
+  let motionCalibrationSamples = [];
+  let motionCalibrating = false;
+  let motionLastReading = null;
   let motionInViewport = true;
-  const motionTarget = { tilt: 0, x: 0, y: 0 };
-  const motionCurrent = { tilt: 0, x: 0, y: 0 };
+  let motionListening = false;
+  const motionTarget = { tilt: 0, x: 0, y: 0, surge: 0 };
+  const motionCurrent = { tilt: 0, x: 0, y: 0, surge: 0, particleX: 0 };
+  const motionVelocity = { tilt: 0, x: 0, y: 0, surge: 0, particleX: 0 };
 
   const localDateKey = (value = new Date()) => {
     const date = value instanceof Date ? value : new Date(value);
@@ -64,6 +73,40 @@
 
   const clamp = (value, minimum, maximum) =>
     Math.min(maximum, Math.max(minimum, value));
+
+  const deadZone = (value, threshold) => {
+    if (Math.abs(value) <= threshold) return 0;
+    return Math.sign(value) * (Math.abs(value) - threshold);
+  };
+
+  const median = (values) => {
+    const sorted = [...values].sort((a, b) => a - b);
+    return sorted[Math.floor(sorted.length / 2)] || 0;
+  };
+
+  function screenAngle() {
+    const angle = Number(window.screen?.orientation?.angle ?? window.orientation ?? 0);
+    return ((angle % 360) + 360) % 360;
+  }
+
+  function normalizedOrientation(beta, gamma) {
+    switch (screenAngle()) {
+      case 90:
+        return { side: beta, front: -gamma };
+      case 180:
+        return { side: -gamma, front: -beta };
+      case 270:
+        return { side: -beta, front: gamma };
+      default:
+        return { side: gamma, front: beta };
+    }
+  }
+
+  function springStep(key, target, deltaSeconds, stiffness = 72, damping = 10) {
+    motionVelocity[key] += (target - motionCurrent[key]) * stiffness * deltaSeconds;
+    motionVelocity[key] *= Math.exp(-damping * deltaSeconds);
+    motionCurrent[key] += motionVelocity[key] * deltaSeconds;
+  }
 
   function readMotionPreference() {
     try {
@@ -310,14 +353,15 @@
   }
 
   function renderParticles(progress) {
-    const fill = moduleElement?.querySelector(".recovery-liquid-fill");
-    if (!fill) return;
+    const fills = [...(moduleElement?.querySelectorAll(".recovery-liquid-fill") || [])];
+    if (!fills.length) return;
 
+    const particleLimit = lowPerformanceDevice ? 5 : particlePositions.length;
     const count = progress == null || progress < 6
       ? 0
       : progress >= 91
-        ? particlePositions.length
-        : clamp(Math.round(progress / 14), 1, particlePositions.length);
+        ? particleLimit
+        : clamp(Math.round(progress / 14), 1, particleLimit);
     const isStable = (progress || 0) > 90;
     const speed = isStable
       ? 13.2
@@ -328,21 +372,30 @@
       { scale: 1.18, opacity: .74, blur: .12 },
     ];
 
-    fill.querySelectorAll(".recovery-particle").forEach((particle) => particle.remove());
+    fills.forEach((fill) => {
+      fill.querySelectorAll(".recovery-particle").forEach((particle) => particle.remove());
+    });
     particlePositions.slice(0, count).forEach(([left, bottom, delay], index) => {
       const depth = depthStyles[index % depthStyles.length];
+      const chamberIndex = left < 50 ? 0 : 1;
+      const fill = fills[chamberIndex] || fills[0];
+      const chamberLeft = chamberIndex === 0 ? left * 2 : (left - 50) * 2;
       const particle = document.createElement("img");
       particle.className = "recovery-particle";
       particle.src = "./assets/recovery-particle.png";
       particle.alt = "";
       particle.setAttribute("aria-hidden", "true");
-      particle.style.left = `${left}%`;
+      particle.style.left = `${clamp(chamberLeft, 8, 92)}%`;
       particle.style.bottom = `${Math.min(bottom, 86)}%`;
       particle.style.setProperty("--particle-speed", `${speed + index * .34}s`);
       particle.style.setProperty("--particle-delay", `${delay}s`);
       particle.style.setProperty("--particle-scale", depth.scale);
       particle.style.setProperty("--particle-opacity", isStable ? depth.opacity * .76 : depth.opacity);
       particle.style.setProperty("--particle-blur", `${depth.blur}px`);
+      particle.style.setProperty(
+        "--particle-drift",
+        `var(--recovery-particle-drift-${index % 3 === 0 ? "far" : index % 3 === 1 ? "mid" : "near"})`
+      );
       fill.append(particle);
     });
   }
@@ -368,6 +421,9 @@
       moduleElement.classList.remove("is-stable");
       moduleElement.classList.add("is-depleted");
       moduleElement.style.setProperty("--recovery-level", "0%");
+      moduleElement.style.setProperty("--recovery-level-left", "0%");
+      moduleElement.style.setProperty("--recovery-level-right", "0%");
+      moduleElement.classList.remove("has-submerged-number");
       if (unit) unit.hidden = true;
       animatePercentage(null);
       renderParticles(null);
@@ -397,9 +453,17 @@
 
     moduleElement.classList.toggle("is-stable", isStable);
     moduleElement.classList.toggle("is-depleted", progress < 2);
+    moduleElement.classList.toggle("has-submerged-number", progress >= 55);
+
+    const visualLevel = clamp(progress * .94, 0, 94);
+    const chamberDifference = progress < 2 ? 0 : clamp(.72 - progress * .0045, .24, .72);
+    const leftLevel = clamp(visualLevel - chamberDifference * .45, 0, 94);
+    const rightLevel = clamp(visualLevel + chamberDifference * .55, 0, 94);
 
     requestAnimationFrame(() => {
-      moduleElement.style.setProperty("--recovery-level", `${progress.toFixed(2)}%`);
+      moduleElement.style.setProperty("--recovery-level", `${visualLevel.toFixed(2)}%`);
+      moduleElement.style.setProperty("--recovery-level-left", `${leftLevel.toFixed(2)}%`);
+      moduleElement.style.setProperty("--recovery-level-right", `${rightLevel.toFixed(2)}%`);
     });
 
     animatePercentage(progress);
@@ -470,34 +534,76 @@
     return typeof window.DeviceOrientationEvent?.requestPermission === "function";
   }
 
-  function resetMotionBaseline() {
+  function attachMotionListener() {
+    if (!motionEnabled || motionListening || document.hidden || !motionInViewport) return;
+    window.addEventListener("deviceorientation", handleDeviceOrientation, { passive: true });
+    motionListening = true;
+  }
+
+  function detachMotionListener() {
+    if (!motionListening) return;
+    window.removeEventListener("deviceorientation", handleDeviceOrientation);
+    motionListening = false;
+  }
+
+  function beginMotionCalibration({ quiet = false } = {}) {
     motionBaseline = null;
+    motionCalibrationSamples = [];
+    motionCalibrating = Boolean(motionEnabled);
+    motionLastReading = null;
     motionTarget.tilt = 0;
     motionTarget.x = 0;
     motionTarget.y = 0;
+    motionTarget.surge = 0;
+    moduleElement?.classList.toggle("is-calibrating", motionCalibrating);
+    updateMotionControl();
+    if (motionCalibrating && !quiet) showToast("保持当前握持姿势，正在校准液面");
+  }
+
+  function resetMotionBaseline() {
+    if (motionEnabled) beginMotionCalibration({ quiet: true });
+    else {
+      motionBaseline = null;
+      motionCalibrationSamples = [];
+      motionCalibrating = false;
+      motionLastReading = null;
+    }
   }
 
   function applyMotionVariables() {
     if (!moduleElement) return;
     moduleElement.style.setProperty("--recovery-liquid-tilt", `${motionCurrent.tilt.toFixed(2)}deg`);
+    moduleElement.style.setProperty("--recovery-liquid-tilt-left", `${(motionCurrent.tilt - motionCurrent.surge * .12).toFixed(2)}deg`);
+    moduleElement.style.setProperty("--recovery-liquid-tilt-right", `${(motionCurrent.tilt + motionCurrent.surge * .1).toFixed(2)}deg`);
     moduleElement.style.setProperty("--recovery-motion-x", `${motionCurrent.x.toFixed(2)}px`);
     moduleElement.style.setProperty("--recovery-motion-y", `${motionCurrent.y.toFixed(2)}px`);
     moduleElement.style.setProperty("--recovery-liquid-x", `${(motionCurrent.x * .34).toFixed(2)}px`);
+    moduleElement.style.setProperty("--recovery-liquid-y", `${(motionCurrent.y * .12 - motionCurrent.surge * 1.8).toFixed(2)}px`);
     moduleElement.style.setProperty("--recovery-glow-x", `${(motionCurrent.x * .28).toFixed(2)}px`);
     moduleElement.style.setProperty("--recovery-glow-y", `${(motionCurrent.y * .28).toFixed(2)}px`);
-    moduleElement.style.setProperty("--recovery-highlight-x", `${(motionCurrent.x * 1.28).toFixed(2)}px`);
-    moduleElement.style.setProperty("--recovery-highlight-y", `${(motionCurrent.y * 1.12).toFixed(2)}px`);
+    moduleElement.style.setProperty("--recovery-highlight-x", `${(-motionCurrent.x * .92).toFixed(2)}px`);
+    moduleElement.style.setProperty("--recovery-highlight-y", `${(-motionCurrent.y * .74).toFixed(2)}px`);
+    moduleElement.style.setProperty("--recovery-edge-x", `${(-motionCurrent.x * .42).toFixed(2)}px`);
+    moduleElement.style.setProperty("--recovery-edge-y", `${(-motionCurrent.y * .28).toFixed(2)}px`);
     moduleElement.style.setProperty("--recovery-caustic-x", `${(-motionCurrent.x * .42).toFixed(2)}px`);
     moduleElement.style.setProperty("--recovery-caustic-y", `${(-motionCurrent.y * .38).toFixed(2)}px`);
-    moduleElement.style.setProperty("--recovery-particle-drift", `${(-motionCurrent.x * .46).toFixed(2)}px`);
+    moduleElement.style.setProperty("--recovery-particle-drift-far", `${(-motionCurrent.particleX * .22).toFixed(2)}px`);
+    moduleElement.style.setProperty("--recovery-particle-drift-mid", `${(-motionCurrent.particleX * .38).toFixed(2)}px`);
+    moduleElement.style.setProperty("--recovery-particle-drift-near", `${(-motionCurrent.particleX * .56).toFixed(2)}px`);
+    moduleElement.style.setProperty("--recovery-motion-energy", motionCurrent.surge.toFixed(3));
+    moduleElement.style.setProperty("--recovery-caustic-opacity", (.62 + motionCurrent.surge * .18).toFixed(3));
   }
 
   function resetMotionVariables(immediate = false) {
-    resetMotionBaseline();
+    motionTarget.tilt = 0;
+    motionTarget.x = 0;
+    motionTarget.y = 0;
+    motionTarget.surge = 0;
     if (immediate) {
-      motionCurrent.tilt = 0;
-      motionCurrent.x = 0;
-      motionCurrent.y = 0;
+      Object.keys(motionCurrent).forEach((key) => {
+        motionCurrent[key] = 0;
+        motionVelocity[key] = 0;
+      });
       applyMotionVariables();
     }
   }
@@ -512,12 +618,19 @@
       return;
     }
 
-    if (!motionLastFrame || now - motionLastFrame >= 32) {
+    const stableFrame = currentProgress != null && currentProgress >= 91;
+    const frameInterval = 1000 / (stableFrame ? 18 : 30);
+    if (!motionLastFrame || now - motionLastFrame >= frameInterval) {
+      const deltaSeconds = motionLastFrame
+        ? clamp((now - motionLastFrame) / 1000, .016, .085)
+        : 1 / 30;
       motionLastFrame = now;
-      const smoothing = .14;
-      motionCurrent.tilt += (motionTarget.tilt - motionCurrent.tilt) * smoothing;
-      motionCurrent.x += (motionTarget.x - motionCurrent.x) * smoothing;
-      motionCurrent.y += (motionTarget.y - motionCurrent.y) * smoothing;
+      springStep("tilt", motionTarget.tilt, deltaSeconds, stableFrame ? 48 : 74, stableFrame ? 12 : 9.5);
+      springStep("x", motionTarget.x, deltaSeconds, stableFrame ? 42 : 66, 10.5);
+      springStep("y", motionTarget.y, deltaSeconds, 54, 11);
+      springStep("surge", motionTarget.surge, deltaSeconds, 46, 10);
+      springStep("particleX", motionTarget.x, deltaSeconds, 30, 8.5);
+      motionTarget.surge *= Math.exp(-3.8 * deltaSeconds);
       applyMotionVariables();
     }
     motionFrame = requestAnimationFrame(motionTick);
@@ -531,22 +644,47 @@
 
   function handleDeviceOrientation(event) {
     if (!motionEnabled || !Number.isFinite(event.beta) || !Number.isFinite(event.gamma)) return;
-    if (!motionBaseline) {
-      motionBaseline = { beta: event.beta, gamma: event.gamma };
+    const reading = normalizedOrientation(event.beta, event.gamma);
+    if (!motionBaseline || motionCalibrating) {
+      motionCalibrationSamples.push(reading);
+      if (motionCalibrationSamples.length < MOTION_CALIBRATION_COUNT) {
+        updateMotionControl();
+        return;
+      }
+      motionBaseline = {
+        side: median(motionCalibrationSamples.map((sample) => sample.side)),
+        front: median(motionCalibrationSamples.map((sample) => sample.front)),
+      };
+      motionCalibrationSamples = [];
+      motionCalibrating = false;
+      motionLastReading = reading;
+      moduleElement?.classList.remove("is-calibrating");
+      updateMotionControl();
       return;
     }
 
-    const deltaGamma = clamp(event.gamma - motionBaseline.gamma, -32, 32);
-    const deltaBeta = clamp(event.beta - motionBaseline.beta, -28, 28);
-    motionTarget.tilt = clamp(deltaGamma * .125, -4, 4);
-    motionTarget.x = clamp(deltaGamma * .25, -8, 8);
-    motionTarget.y = clamp(deltaBeta * .16, -4.5, 4.5);
+    const deltaSide = deadZone(clamp(reading.side - motionBaseline.side, -34, 34), 1.15);
+    const deltaFront = deadZone(clamp(reading.front - motionBaseline.front, -30, 30), 1.35);
+    const progress = currentProgress == null ? 50 : currentProgress;
+    const mobility = clamp(1.16 - progress * .0065, .5, 1.12);
+    const sideVelocity = motionLastReading
+      ? Math.abs(reading.side - motionLastReading.side)
+      : 0;
+    motionLastReading = reading;
+
+    // The liquid surface counter-rotates against the phone while its mass still
+    // shifts towards the physically lower side of the glass container.
+    motionTarget.tilt = clamp(-deltaSide * .14 * mobility, -4.8 * mobility, 4.8 * mobility);
+    motionTarget.x = clamp(deltaSide * .29 * mobility, -9 * mobility, 9 * mobility);
+    motionTarget.y = clamp(deltaFront * .15 * mobility, -4.5 * mobility, 4.5 * mobility);
+    motionTarget.surge = Math.max(motionTarget.surge, clamp(sideVelocity / 9, 0, 1));
     resumeMotionFrame();
   }
 
   function updateMotionControl() {
     const button = moduleElement?.querySelector(".recovery-motion-toggle");
     const status = moduleElement?.querySelector(".recovery-motion-status");
+    const calibrateButton = moduleElement?.querySelector(".recovery-calibrate-button");
     if (!button || !status) return;
 
     const unsupported = !motionSupported();
@@ -554,11 +692,13 @@
     button.setAttribute("aria-checked", String(motionEnabled));
     button.classList.toggle("is-on", motionEnabled);
     button.disabled = motionPermissionPending || unsupported || disabledBySystem;
+    if (calibrateButton) calibrateButton.disabled = !motionEnabled || motionCalibrating;
 
     if (disabledBySystem) status.textContent = "系统已开启减少动态效果";
     else if (unsupported) status.textContent = "此设备暂不支持倾斜联动";
     else if (motionPermissionPending) status.textContent = "正在请求动作权限";
-    else if (motionEnabled) status.textContent = "已开启 · 倾斜手机试试";
+    else if (motionCalibrating) status.textContent = `校准中 · 保持手机不动 ${motionCalibrationSamples.length}/${MOTION_CALIBRATION_COUNT}`;
+    else if (motionEnabled) status.textContent = "已开启 · 液面将保持反向水平";
     else if (motionPreferred && motionNeedsPermission()) status.textContent = "轻点后重新启用倾斜联动";
     else status.textContent = "关闭 · 基础液体动画仍保留";
   }
@@ -585,8 +725,9 @@
     motionEnabled = true;
     writeMotionPreference(true);
     resetMotionVariables(true);
-    window.addEventListener("deviceorientation", handleDeviceOrientation, { passive: true });
+    attachMotionListener();
     moduleElement?.classList.add("has-motion");
+    beginMotionCalibration({ quiet: true });
     updateMotionControl();
     showMotionHint();
     resumeMotionFrame();
@@ -595,13 +736,25 @@
   function stopMotion({ remember = true } = {}) {
     motionEnabled = false;
     if (remember) writeMotionPreference(false);
-    window.removeEventListener("deviceorientation", handleDeviceOrientation);
+    detachMotionListener();
     if (motionFrame) cancelAnimationFrame(motionFrame);
     motionFrame = 0;
     motionLastFrame = 0;
-    moduleElement?.classList.remove("has-motion");
+    moduleElement?.classList.add("is-motion-settling");
+    moduleElement?.classList.remove("has-motion", "is-calibrating");
+    motionCalibrating = false;
+    motionCalibrationSamples = [];
+    motionBaseline = null;
+    motionLastReading = null;
     resetMotionVariables(true);
+    window.setTimeout(() => moduleElement?.classList.remove("is-motion-settling"), 220);
     updateMotionControl();
+  }
+
+  function recalibrateMotion() {
+    if (!motionEnabled) return;
+    beginMotionCalibration();
+    navigator.vibrate?.(6);
   }
 
   async function toggleMotion() {
@@ -697,6 +850,7 @@
     const section = document.createElement("section");
     section.id = MODULE_ID;
     section.className = "recovery-module";
+    section.classList.toggle("is-low-performance", lowPerformanceDevice);
     section.setAttribute("aria-label", "蛋蛋恢复仓");
     section.innerHTML = `
       <div class="recovery-summary" role="button" tabindex="0" aria-expanded="false" aria-controls="recovery-details">
@@ -712,19 +866,27 @@
         <div class="recovery-visual">
           <div class="recovery-vessel-stage" aria-hidden="true">
             <div class="recovery-liquid-mask">
-              <div class="recovery-liquid-fill">
-                <span class="recovery-liquid-caustics"></span>
+              <div class="recovery-liquid-chamber recovery-liquid-chamber-left">
+                <div class="recovery-liquid-fill">
+                  <span class="recovery-liquid-caustics"></span>
+                </div>
               </div>
+              <div class="recovery-liquid-chamber recovery-liquid-chamber-right">
+                <div class="recovery-liquid-fill">
+                  <span class="recovery-liquid-caustics"></span>
+                </div>
+              </div>
+              <span class="recovery-edge-refraction"></span>
             </div>
             <div class="recovery-glass-glint"></div>
             <img class="recovery-vessel-shell" src="./assets/recovery-vessel.png" alt="">
             <div class="recovery-percent">
               <span class="recovery-percent-value"><span class="recovery-percent-number">--</span><small>%</small></span>
-              <span class="recovery-percent-label">恢复进度</span>
+              <span class="recovery-percent-label">恢复趋势</span>
             </div>
           </div>
           <span class="recovery-status-pill">读取记录中</span>
-          <span class="recovery-motion-hint" aria-live="polite">倾斜手机试试</span>
+          <span class="recovery-motion-hint" aria-live="polite">先保持不动，再倾斜手机</span>
         </div>
 
         <div class="recovery-summary-copy">
@@ -745,34 +907,39 @@
               `).join("")}
             </div>
 
-            <dl class="recovery-data">
+            <dl class="recovery-data recovery-data-grid">
               <div class="recovery-data-row">
-                <dt>上次记录时间</dt>
+                <dt>上次记录</dt>
                 <dd data-recovery="recorded">尚未记录</dd>
               </div>
               <div class="recovery-data-row">
-                <dt>下一个恢复阶段</dt>
+                <dt>下一阶段</dt>
                 <dd data-recovery="next-stage">等待开始</dd>
               </div>
               <div class="recovery-data-row">
-                <dt>预计进入时间</dt>
+                <dt>预计进入</dt>
                 <dd data-recovery="next-time">记录后开始估算</dd>
               </div>
             </dl>
 
-            <div class="recovery-motion-setting">
+            <button class="recovery-motion-setting recovery-motion-toggle" type="button" role="switch" aria-checked="false" aria-label="开启倾斜联动">
               <div>
                 <strong>动态效果</strong>
                 <span class="recovery-motion-status">检查设备支持情况</span>
               </div>
-              <button class="recovery-motion-toggle" type="button" role="switch" aria-checked="false" aria-label="开启倾斜联动">
+              <span class="recovery-motion-switch" aria-hidden="true">
                 <i aria-hidden="true"></i>
-              </button>
-            </div>
+              </span>
+            </button>
+
+            <button class="recovery-calibrate-button" type="button" disabled>重新校准当前姿势</button>
 
             <button class="recovery-edit-button" type="button">重新记录释放时间</button>
             <p class="recovery-encouragement">保持觉察，比追求完美更重要。</p>
-            <p class="recovery-disclaimer">本模块依据距离上次释放的时间进行趋势估算，仅用于可视化参考，不代表真实精液量、精子数量、身体检测结果或医学诊断。</p>
+            <details class="recovery-disclaimer">
+              <summary>趋势估算说明</summary>
+              <p>本模块依据距离上次释放的时间进行趋势估算，仅用于可视化参考，不代表真实精液量、精子数量、身体检测结果或医学诊断。</p>
+            </details>
           </div>
         </div>
       </div>
@@ -838,6 +1005,7 @@
     });
     moduleElement.querySelector(".recovery-edit-button")?.addEventListener("click", openEditor);
     moduleElement.querySelector(".recovery-motion-toggle")?.addEventListener("click", toggleMotion);
+    moduleElement.querySelector(".recovery-calibrate-button")?.addEventListener("click", recalibrateMotion);
     editorElement.querySelector(".recovery-editor-close")?.addEventListener("click", closeEditor);
     editorElement.querySelector(".recovery-editor-save")?.addEventListener("click", saveManualTime);
     editorElement.querySelector(".recovery-editor-latest")?.addEventListener("click", useLatestCheckin);
@@ -847,9 +1015,18 @@
 
     if (typeof IntersectionObserver === "function") {
       stageObserver = new IntersectionObserver(([entry]) => {
+        const wasInViewport = motionInViewport;
         motionInViewport = Boolean(entry?.isIntersecting);
         moduleElement?.classList.toggle("is-offscreen", !motionInViewport);
-        if (motionInViewport) resumeMotionFrame();
+        if (motionInViewport) {
+          attachMotionListener();
+          if (!wasInViewport && motionEnabled) beginMotionCalibration({ quiet: true });
+          resumeMotionFrame();
+        } else {
+          detachMotionListener();
+          if (motionFrame) cancelAnimationFrame(motionFrame);
+          motionFrame = 0;
+        }
       }, { rootMargin: "120px 0px" });
       stageObserver.observe(moduleElement);
     }
@@ -900,9 +1077,12 @@
     if (!document.hidden) {
       syncWithCheckins();
       render();
+      attachMotionListener();
+      if (motionEnabled) beginMotionCalibration({ quiet: true });
       resumeMotionFrame();
-    } else if (motionFrame) {
-      cancelAnimationFrame(motionFrame);
+    } else {
+      detachMotionListener();
+      if (motionFrame) cancelAnimationFrame(motionFrame);
       motionFrame = 0;
     }
   });
