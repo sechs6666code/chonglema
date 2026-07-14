@@ -6,6 +6,8 @@
   const MOTION_KEY = "chonglema-recovery-motion-v1";
   const MOTION_HINT_KEY = "chonglema-recovery-motion-hint-v1";
   const MOTION_CALIBRATION_COUNT = 7;
+  const MOTION_TILT_GAIN = .28;
+  const MOTION_TILT_LIMIT = 9.6;
   const reducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)");
   const lowPerformanceDevice =
     (Number(navigator.hardwareConcurrency) > 0 && Number(navigator.hardwareConcurrency) <= 4) ||
@@ -674,7 +676,11 @@
 
     // The liquid surface counter-rotates against the phone while its mass still
     // shifts towards the physically lower side of the glass container.
-    motionTarget.tilt = clamp(-deltaSide * .14 * mobility, -4.8 * mobility, 4.8 * mobility);
+    motionTarget.tilt = clamp(
+      -deltaSide * MOTION_TILT_GAIN * mobility,
+      -MOTION_TILT_LIMIT * mobility,
+      MOTION_TILT_LIMIT * mobility
+    );
     motionTarget.x = clamp(deltaSide * .29 * mobility, -9 * mobility, 9 * mobility);
     motionTarget.y = clamp(deltaFront * .15 * mobility, -4.5 * mobility, 4.5 * mobility);
     motionTarget.surge = Math.max(motionTarget.surge, clamp(sideVelocity / 9, 0, 1));
