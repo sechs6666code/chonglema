@@ -3,6 +3,7 @@ import fs from "node:fs";
 import { JSDOM } from "jsdom";
 
 const source = fs.readFileSync(new URL("../assets/recovery-module.js", import.meta.url), "utf8");
+const cssSource = fs.readFileSync(new URL("../assets/recovery-module.css", import.meta.url), "utf8");
 const now = new Date();
 const release = new Date(now.getTime() - (56 * 60 * 60 * 1000));
 const dateKey = [
@@ -39,6 +40,9 @@ assert.ok(module.querySelector(".recovery-liquid-caustics"), "liquid refraction 
 assert.ok(module.querySelector(".recovery-glass-glint"), "glass highlight layer should render");
 assert.ok(module.querySelector(".recovery-edge-refraction"), "glass edge refraction should render");
 assert.equal(module.querySelectorAll(".recovery-liquid-chamber").length, 2, "left and right chambers should render independently");
+assert.match(source, /function applyLiquidSurface\(\)/, "the two chambers should share one calculated liquid surface");
+assert.match(cssSource, /100% var\(--recovery-surface-center\)/, "the left chamber should meet the shared center surface");
+assert.match(cssSource, /0 var\(--recovery-surface-center\)/, "the right chamber should meet the shared center surface");
 assert.ok(module.querySelector(".recovery-motion-hint"), "one-time tilt hint should render");
 
 const reducedMotionToggle = module.querySelector(".recovery-motion-toggle");
