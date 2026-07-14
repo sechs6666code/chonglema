@@ -3,6 +3,8 @@
   const EDITOR_ID = "recovery-editor";
   const RECORDS_KEY = "did-you-v1";
   const RECOVERY_KEY = "chonglema-recovery-v1";
+  const MOTION_KEY = "chonglema-recovery-motion-v1";
+  const MOTION_HINT_KEY = "chonglema-recovery-motion-hint-v1";
   const reducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)");
 
   const stages = [
@@ -38,7 +40,19 @@
   let recordsSnapshot = "";
   let currentProgress = null;
   let toastTimer = 0;
+  let feedbackTimer = 0;
+  let motionHintTimer = 0;
   let mountObserver;
+  let stageObserver;
+  let motionEnabled = false;
+  let motionPermissionPending = false;
+  let motionPreferred = readMotionPreference();
+  let motionFrame = 0;
+  let motionLastFrame = 0;
+  let motionBaseline = null;
+  let motionInViewport = true;
+  const motionTarget = { tilt: 0, x: 0, y: 0 };
+  const motionCurrent = { tilt: 0, x: 0, y: 0 };
 
   const localDateKey = (value = new Date()) => {
     const date = value instanceof Date ? value : new Date(value);
@@ -50,6 +64,23 @@
 
   const clamp = (value, minimum, maximum) =>
     Math.min(maximum, Math.max(minimum, value));
+
+  function readMotionPreference() {
+    try {
+      return localStorage.getItem(MOTION_KEY) === "on";
+    } catch {
+      return false;
+    }
+  }
+
+  function writeMotionPreference(enabled) {
+    motionPreferred = enabled;
+    try {
+      localStorage.setItem(MOTION_KEY, enabled ? "on" : "off");
+    } catch {
+      // Motion remains available for the current session when storage is blocked.
+    }
+  }
 
   releaseState = readReleaseState();
 
@@ -238,6 +269,7 @@
 
     if (to == null) {
       number.textContent = "--";
+      number.classList.remove("is-counting");
       currentProgress = null;
       return;
     }
@@ -245,6 +277,7 @@
     const target = Math.round(to);
     if (reducedMotion.matches) {
       number.textContent = String(target);
+      number.classList.remove("is-counting");
       currentProgress = target;
       return;
     }
@@ -254,16 +287,23 @@
       number.textContent = "0";
       currentProgress = 0;
     }
-    if (from === target) return;
+    if (from === target) {
+      number.classList.remove("is-counting");
+      return;
+    }
+    number.classList.add("is-counting");
     const started = performance.now();
-    const duration = 480;
+    const duration = 620;
 
     const tick = (now) => {
       const ratio = clamp((now - started) / duration, 0, 1);
       const eased = 1 - Math.pow(1 - ratio, 3);
       number.textContent = String(Math.round(from + (target - from) * eased));
       if (ratio < 1) requestAnimationFrame(tick);
-      else currentProgress = target;
+      else {
+        currentProgress = target;
+        number.classList.remove("is-counting");
+      }
     };
 
     requestAnimationFrame(tick);
@@ -275,11 +315,22 @@
 
     const count = progress == null || progress < 6
       ? 0
-      : clamp(Math.round(progress / 14), 1, particlePositions.length);
-    const speed = clamp(10.2 - (progress || 0) * .038, 6.3, 10.2);
+      : progress >= 91
+        ? particlePositions.length
+        : clamp(Math.round(progress / 14), 1, particlePositions.length);
+    const isStable = (progress || 0) > 90;
+    const speed = isStable
+      ? 13.2
+      : clamp(10.4 - (progress || 0) * .036, 7.2, 10.4);
+    const depthStyles = [
+      { scale: .72, opacity: .4, blur: .45 },
+      { scale: 1, opacity: .62, blur: 0 },
+      { scale: 1.18, opacity: .74, blur: .12 },
+    ];
 
     fill.querySelectorAll(".recovery-particle").forEach((particle) => particle.remove());
     particlePositions.slice(0, count).forEach(([left, bottom, delay], index) => {
+      const depth = depthStyles[index % depthStyles.length];
       const particle = document.createElement("img");
       particle.className = "recovery-particle";
       particle.src = "./assets/recovery-particle.png";
@@ -289,6 +340,9 @@
       particle.style.bottom = `${Math.min(bottom, 86)}%`;
       particle.style.setProperty("--particle-speed", `${speed + index * .34}s`);
       particle.style.setProperty("--particle-delay", `${delay}s`);
+      particle.style.setProperty("--particle-scale", depth.scale);
+      particle.style.setProperty("--particle-opacity", isStable ? depth.opacity * .76 : depth.opacity);
+      particle.style.setProperty("--particle-blur", `${depth.blur}px`);
       fill.append(particle);
     });
   }
@@ -311,6 +365,8 @@
     const unit = moduleElement.querySelector(".recovery-percent-value small");
     if (!releaseState) {
       moduleElement.classList.add("is-empty");
+      moduleElement.classList.remove("is-stable");
+      moduleElement.classList.add("is-depleted");
       moduleElement.style.setProperty("--recovery-level", "0%");
       if (unit) unit.hidden = true;
       animatePercentage(null);
@@ -338,6 +394,9 @@
     const nextTarget = isStable ? 100 : stages[activeIndex].maximum + 1;
     const remainingHours = Math.max(0, hoursForProgress(nextTarget) - elapsedHours);
     const remaining = isStable ? "已进入稳定区间" : formatRemaining(remainingHours);
+
+    moduleElement.classList.toggle("is-stable", isStable);
+    moduleElement.classList.toggle("is-depleted", progress < 2);
 
     requestAnimationFrame(() => {
       moduleElement.style.setProperty("--recovery-level", `${progress.toFixed(2)}%`);
@@ -403,6 +462,197 @@
     toastTimer = window.setTimeout(() => toast.classList.remove("is-visible"), 2400);
   }
 
+  function motionSupported() {
+    return typeof window.DeviceOrientationEvent !== "undefined";
+  }
+
+  function motionNeedsPermission() {
+    return typeof window.DeviceOrientationEvent?.requestPermission === "function";
+  }
+
+  function resetMotionBaseline() {
+    motionBaseline = null;
+    motionTarget.tilt = 0;
+    motionTarget.x = 0;
+    motionTarget.y = 0;
+  }
+
+  function applyMotionVariables() {
+    if (!moduleElement) return;
+    moduleElement.style.setProperty("--recovery-liquid-tilt", `${motionCurrent.tilt.toFixed(2)}deg`);
+    moduleElement.style.setProperty("--recovery-motion-x", `${motionCurrent.x.toFixed(2)}px`);
+    moduleElement.style.setProperty("--recovery-motion-y", `${motionCurrent.y.toFixed(2)}px`);
+    moduleElement.style.setProperty("--recovery-liquid-x", `${(motionCurrent.x * .34).toFixed(2)}px`);
+    moduleElement.style.setProperty("--recovery-glow-x", `${(motionCurrent.x * .28).toFixed(2)}px`);
+    moduleElement.style.setProperty("--recovery-glow-y", `${(motionCurrent.y * .28).toFixed(2)}px`);
+    moduleElement.style.setProperty("--recovery-highlight-x", `${(motionCurrent.x * 1.28).toFixed(2)}px`);
+    moduleElement.style.setProperty("--recovery-highlight-y", `${(motionCurrent.y * 1.12).toFixed(2)}px`);
+    moduleElement.style.setProperty("--recovery-caustic-x", `${(-motionCurrent.x * .42).toFixed(2)}px`);
+    moduleElement.style.setProperty("--recovery-caustic-y", `${(-motionCurrent.y * .38).toFixed(2)}px`);
+    moduleElement.style.setProperty("--recovery-particle-drift", `${(-motionCurrent.x * .46).toFixed(2)}px`);
+  }
+
+  function resetMotionVariables(immediate = false) {
+    resetMotionBaseline();
+    if (immediate) {
+      motionCurrent.tilt = 0;
+      motionCurrent.x = 0;
+      motionCurrent.y = 0;
+      applyMotionVariables();
+    }
+  }
+
+  function motionTick(now) {
+    if (!motionEnabled) {
+      motionFrame = 0;
+      return;
+    }
+    if (document.hidden || !motionInViewport) {
+      motionFrame = 0;
+      return;
+    }
+
+    if (!motionLastFrame || now - motionLastFrame >= 32) {
+      motionLastFrame = now;
+      const smoothing = .14;
+      motionCurrent.tilt += (motionTarget.tilt - motionCurrent.tilt) * smoothing;
+      motionCurrent.x += (motionTarget.x - motionCurrent.x) * smoothing;
+      motionCurrent.y += (motionTarget.y - motionCurrent.y) * smoothing;
+      applyMotionVariables();
+    }
+    motionFrame = requestAnimationFrame(motionTick);
+  }
+
+  function resumeMotionFrame() {
+    if (!motionEnabled || motionFrame || document.hidden || !motionInViewport) return;
+    motionLastFrame = 0;
+    motionFrame = requestAnimationFrame(motionTick);
+  }
+
+  function handleDeviceOrientation(event) {
+    if (!motionEnabled || !Number.isFinite(event.beta) || !Number.isFinite(event.gamma)) return;
+    if (!motionBaseline) {
+      motionBaseline = { beta: event.beta, gamma: event.gamma };
+      return;
+    }
+
+    const deltaGamma = clamp(event.gamma - motionBaseline.gamma, -32, 32);
+    const deltaBeta = clamp(event.beta - motionBaseline.beta, -28, 28);
+    motionTarget.tilt = clamp(deltaGamma * .125, -4, 4);
+    motionTarget.x = clamp(deltaGamma * .25, -8, 8);
+    motionTarget.y = clamp(deltaBeta * .16, -4.5, 4.5);
+    resumeMotionFrame();
+  }
+
+  function updateMotionControl() {
+    const button = moduleElement?.querySelector(".recovery-motion-toggle");
+    const status = moduleElement?.querySelector(".recovery-motion-status");
+    if (!button || !status) return;
+
+    const unsupported = !motionSupported();
+    const disabledBySystem = reducedMotion.matches;
+    button.setAttribute("aria-checked", String(motionEnabled));
+    button.classList.toggle("is-on", motionEnabled);
+    button.disabled = motionPermissionPending || unsupported || disabledBySystem;
+
+    if (disabledBySystem) status.textContent = "系统已开启减少动态效果";
+    else if (unsupported) status.textContent = "此设备暂不支持倾斜联动";
+    else if (motionPermissionPending) status.textContent = "正在请求动作权限";
+    else if (motionEnabled) status.textContent = "已开启 · 倾斜手机试试";
+    else if (motionPreferred && motionNeedsPermission()) status.textContent = "轻点后重新启用倾斜联动";
+    else status.textContent = "关闭 · 基础液体动画仍保留";
+  }
+
+  function showMotionHint() {
+    const hint = moduleElement?.querySelector(".recovery-motion-hint");
+    if (!hint) return;
+    let hasSeenHint = false;
+    try {
+      hasSeenHint = localStorage.getItem(MOTION_HINT_KEY) === "seen";
+      if (!hasSeenHint) localStorage.setItem(MOTION_HINT_KEY, "seen");
+    } catch {
+      // Showing the hint once per session is still useful if storage is unavailable.
+    }
+    if (hasSeenHint) return;
+
+    window.clearTimeout(motionHintTimer);
+    hint.classList.add("is-visible");
+    motionHintTimer = window.setTimeout(() => hint.classList.remove("is-visible"), 4200);
+  }
+
+  function startMotion() {
+    if (motionEnabled || reducedMotion.matches || !motionSupported()) return;
+    motionEnabled = true;
+    writeMotionPreference(true);
+    resetMotionVariables(true);
+    window.addEventListener("deviceorientation", handleDeviceOrientation, { passive: true });
+    moduleElement?.classList.add("has-motion");
+    updateMotionControl();
+    showMotionHint();
+    resumeMotionFrame();
+  }
+
+  function stopMotion({ remember = true } = {}) {
+    motionEnabled = false;
+    if (remember) writeMotionPreference(false);
+    window.removeEventListener("deviceorientation", handleDeviceOrientation);
+    if (motionFrame) cancelAnimationFrame(motionFrame);
+    motionFrame = 0;
+    motionLastFrame = 0;
+    moduleElement?.classList.remove("has-motion");
+    resetMotionVariables(true);
+    updateMotionControl();
+  }
+
+  async function toggleMotion() {
+    if (motionEnabled) {
+      stopMotion();
+      showToast("倾斜联动已关闭，基础液体动画仍会保留");
+      return;
+    }
+    if (reducedMotion.matches) {
+      showToast("系统已开启减少动态效果");
+      return;
+    }
+    if (!motionSupported()) {
+      showToast("当前设备暂不支持倾斜联动");
+      return;
+    }
+
+    motionPermissionPending = true;
+    updateMotionControl();
+    try {
+      const permission = motionNeedsPermission()
+        ? await window.DeviceOrientationEvent.requestPermission()
+        : "granted";
+      if (permission !== "granted") {
+        writeMotionPreference(false);
+        showToast("未获得动作权限，已继续使用基础液体动画");
+        return;
+      }
+      startMotion();
+      navigator.vibrate?.(8);
+      showToast("倾斜联动已开启");
+    } catch {
+      writeMotionPreference(false);
+      showToast("动作权限未开启，已继续使用基础液体动画");
+    } finally {
+      motionPermissionPending = false;
+      updateMotionControl();
+    }
+  }
+
+  function triggerCheckinFeedback(kind) {
+    if (!moduleElement || reducedMotion.matches) return;
+    window.clearTimeout(feedbackTimer);
+    moduleElement.classList.remove("is-releasing", "is-affirming");
+    void moduleElement.offsetWidth;
+    moduleElement.classList.add(kind === "yes" ? "is-releasing" : "is-affirming");
+    feedbackTimer = window.setTimeout(() => {
+      moduleElement?.classList.remove("is-releasing", "is-affirming");
+    }, kind === "yes" ? 1500 : 900);
+  }
+
   function saveManualTime() {
     const input = editorElement?.querySelector("input");
     const note = editorElement?.querySelector(".recovery-editor-note");
@@ -462,8 +712,11 @@
         <div class="recovery-visual">
           <div class="recovery-vessel-stage" aria-hidden="true">
             <div class="recovery-liquid-mask">
-              <div class="recovery-liquid-fill"></div>
+              <div class="recovery-liquid-fill">
+                <span class="recovery-liquid-caustics"></span>
+              </div>
             </div>
+            <div class="recovery-glass-glint"></div>
             <img class="recovery-vessel-shell" src="./assets/recovery-vessel.png" alt="">
             <div class="recovery-percent">
               <span class="recovery-percent-value"><span class="recovery-percent-number">--</span><small>%</small></span>
@@ -471,6 +724,7 @@
             </div>
           </div>
           <span class="recovery-status-pill">读取记录中</span>
+          <span class="recovery-motion-hint" aria-live="polite">倾斜手机试试</span>
         </div>
 
         <div class="recovery-summary-copy">
@@ -505,6 +759,16 @@
                 <dd data-recovery="next-time">记录后开始估算</dd>
               </div>
             </dl>
+
+            <div class="recovery-motion-setting">
+              <div>
+                <strong>动态效果</strong>
+                <span class="recovery-motion-status">检查设备支持情况</span>
+              </div>
+              <button class="recovery-motion-toggle" type="button" role="switch" aria-checked="false" aria-label="开启倾斜联动">
+                <i aria-hidden="true"></i>
+              </button>
+            </div>
 
             <button class="recovery-edit-button" type="button">重新记录释放时间</button>
             <p class="recovery-encouragement">保持觉察，比追求完美更重要。</p>
@@ -573,6 +837,7 @@
       }
     });
     moduleElement.querySelector(".recovery-edit-button")?.addEventListener("click", openEditor);
+    moduleElement.querySelector(".recovery-motion-toggle")?.addEventListener("click", toggleMotion);
     editorElement.querySelector(".recovery-editor-close")?.addEventListener("click", closeEditor);
     editorElement.querySelector(".recovery-editor-save")?.addEventListener("click", saveManualTime);
     editorElement.querySelector(".recovery-editor-latest")?.addEventListener("click", useLatestCheckin);
@@ -580,8 +845,27 @@
       if (event.target === editorElement) closeEditor();
     });
 
+    if (typeof IntersectionObserver === "function") {
+      stageObserver = new IntersectionObserver(([entry]) => {
+        motionInViewport = Boolean(entry?.isIntersecting);
+        moduleElement?.classList.toggle("is-offscreen", !motionInViewport);
+        if (motionInViewport) resumeMotionFrame();
+      }, { rootMargin: "120px 0px" });
+      stageObserver.observe(moduleElement);
+    }
+
+    reducedMotion.addEventListener?.("change", () => {
+      if (reducedMotion.matches) stopMotion({ remember: false });
+      else if (motionPreferred && !motionNeedsPermission()) startMotion();
+      updateMotionControl();
+    });
+    window.addEventListener("orientationchange", resetMotionBaseline, { passive: true });
+    window.screen?.orientation?.addEventListener?.("change", resetMotionBaseline);
+
     syncWithCheckins(true);
     render();
+    updateMotionControl();
+    if (motionPreferred && !motionNeedsPermission()) startMotion();
   }
 
   function ensureMounted() {
@@ -598,7 +882,9 @@
   }
 
   document.addEventListener("click", (event) => {
-    if (event.target.closest(".answer, .history-actions")) {
+    const action = event.target.closest(".answer, .history-actions button");
+    if (action) {
+      triggerCheckinFeedback(action.classList.contains("yes") ? "yes" : "no");
       window.setTimeout(() => syncWithCheckins(), 120);
       window.setTimeout(() => syncWithCheckins(), 420);
     }
@@ -614,6 +900,10 @@
     if (!document.hidden) {
       syncWithCheckins();
       render();
+      resumeMotionFrame();
+    } else if (motionFrame) {
+      cancelAnimationFrame(motionFrame);
+      motionFrame = 0;
     }
   });
 
@@ -622,6 +912,9 @@
     if (event.key === RECOVERY_KEY) {
       releaseState = readReleaseState();
       render();
+    }
+    if (event.key === MOTION_KEY && event.newValue === "off" && motionEnabled) {
+      stopMotion({ remember: false });
     }
   });
 
