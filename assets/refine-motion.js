@@ -2,6 +2,7 @@
   const root = document.getElementById("root");
   if (!root) return;
 
+  const CHECKIN_TIME_KEY = "did-you-checkin-time-v1";
   const reducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)");
   const seenEntrance = new WeakSet();
   const numberState = new WeakMap();
@@ -12,11 +13,49 @@
   let entranceIndex = 0;
   let displayedMonth = null;
   let monthTransitionTimer = 0;
+  let calendarDrag = null;
+  let suppressCalendarClick = false;
 
   const clamp = (value, minimum, maximum) =>
     Math.min(maximum, Math.max(minimum, value));
 
   const easeOutCubic = (progress) => 1 - Math.pow(1 - progress, 3);
+
+  const localDateKey = (value = new Date()) => {
+    const date = value instanceof Date ? value : new Date(value);
+    const year = date.getFullYear();
+    const month = String(date.getMonth() + 1).padStart(2, "0");
+    const day = String(date.getDate()).padStart(2, "0");
+    return `${year}-${month}-${day}`;
+  };
+
+  const readCheckinTimes = () => {
+    try {
+      const value = JSON.parse(localStorage.getItem(CHECKIN_TIME_KEY) || "{}");
+      return value && typeof value === "object" ? value : {};
+    } catch {
+      return {};
+    }
+  };
+
+  const rememberCheckinTime = () => {
+    const values = readCheckinTimes();
+    values[localDateKey()] = Date.now();
+    try {
+      localStorage.setItem(CHECKIN_TIME_KEY, JSON.stringify(values));
+    } catch {
+      // The receipt still works without persistence when storage is blocked.
+    }
+  };
+
+  const formatReceiptTime = (timestamp) => {
+    if (!Number.isFinite(Number(timestamp))) return "今日已记录";
+    return new Intl.DateTimeFormat("zh-CN", {
+      hour: "2-digit",
+      minute: "2-digit",
+      hour12: false,
+    }).format(new Date(Number(timestamp)));
+  };
 
   const getTextNode = (element) =>
     Array.from(element.childNodes).find((node) => node.nodeType === Node.TEXT_NODE);
@@ -393,17 +432,35 @@
     if (!hero) return;
 
     const selected = hero.querySelector(".answer.selected");
+    const completed = hero.classList.contains("completed") && Boolean(selected);
+    hero.dataset.checkinState = completed ? "completed" : "pending";
     hero.querySelectorAll(".answer").forEach((answer) => {
       const small = answer.querySelector("small");
       if (!small) return;
       if (!small.dataset.originalCopy) small.dataset.originalCopy = small.textContent;
       small.textContent = small.dataset.originalCopy;
       answer.removeAttribute("title");
+      if (answer !== selected || !completed) answer.querySelector(".checkin-receipt-meta")?.remove();
     });
 
-    if (hero.classList.contains("completed") && selected && !hero.classList.contains("motion-editing")) {
+    if (completed && !hero.classList.contains("motion-editing")) {
       const small = selected.querySelector("small");
-      if (small) small.textContent = "今日已记录 · 轻点修改";
+      if (small) small.textContent = "记录已保存，继续按自己的节奏";
+      let receipt = selected.querySelector(".checkin-receipt-meta");
+      if (!receipt) {
+        receipt = document.createElement("span");
+        receipt.className = "checkin-receipt-meta";
+        receipt.setAttribute("aria-hidden", "true");
+        receipt.innerHTML = `
+          <time class="checkin-receipt-time"></time>
+          <span class="checkin-receipt-edit">修改记录&nbsp;›</span>
+        `;
+        selected.append(receipt);
+      }
+      const timestamp = readCheckinTimes()[localDateKey()];
+      const time = receipt.querySelector("time");
+      const nextText = formatReceiptTime(timestamp);
+      if (time && time.textContent !== nextText) time.textContent = nextText;
       selected.title = "修改今天的记录";
     }
   };
@@ -436,6 +493,13 @@
   document.addEventListener(
     "click",
     (event) => {
+      if (suppressCalendarClick && event.target.closest(".calendar-month")) {
+        event.preventDefault();
+        event.stopPropagation();
+        suppressCalendarClick = false;
+        return;
+      }
+
       const pieLegendItem = event.target.closest(".pie-legend span");
       if (pieLegendItem) {
         event.preventDefault();
@@ -460,11 +524,15 @@
 
       const answer = event.target.closest(".hero.motion-editing .answer");
       if (answer) {
+        rememberCheckinTime();
         window.setTimeout(() => {
           answer.closest(".hero")?.classList.remove("motion-editing");
           updateCompletedState();
         }, 80);
       }
+
+      const pendingAnswer = event.target.closest(".hero:not(.completed) .answer");
+      if (pendingAnswer) rememberCheckinTime();
 
       const day = event.target.closest(".calendar-day");
       if (day && !day.disabled) {
@@ -490,6 +558,61 @@
     button.click();
     return true;
   };
+
+  const beginCalendarDrag = (event) => {
+    const month = event.target.closest?.(".calendar-month");
+    if (!month || event.button > 0) return;
+    calendarDrag = {
+      month,
+      pointerId: event.pointerId,
+      pointerType: event.pointerType,
+      startX: event.clientX,
+      startY: event.clientY,
+      deltaX: 0,
+      moved: false,
+    };
+    month.classList.add("is-dragging");
+    month.setPointerCapture?.(event.pointerId);
+  };
+
+  const moveCalendarDrag = (event) => {
+    if (!calendarDrag || event.pointerId !== calendarDrag.pointerId) return;
+    const deltaX = event.clientX - calendarDrag.startX;
+    const deltaY = event.clientY - calendarDrag.startY;
+    if (!calendarDrag.moved && Math.abs(deltaX) < 5) return;
+    if (!calendarDrag.moved && Math.abs(deltaX) <= Math.abs(deltaY) * 1.08) return;
+
+    calendarDrag.moved = true;
+    calendarDrag.deltaX = deltaX;
+    const resisted = clamp(deltaX * .72, -76, 76);
+    calendarDrag.month.style.setProperty("--calendar-drag-x", `${resisted.toFixed(1)}px`);
+    calendarDrag.month.dataset.dragDirection = deltaX < 0 ? "next" : "prev";
+    if (event.cancelable) event.preventDefault();
+  };
+
+  const endCalendarDrag = (event) => {
+    if (!calendarDrag || event.pointerId !== calendarDrag.pointerId) return;
+    const { month, deltaX, moved, pointerType } = calendarDrag;
+    calendarDrag = null;
+    month.classList.remove("is-dragging");
+    month.classList.add("is-snapping");
+    month.style.setProperty("--calendar-release-x", `${clamp(deltaX * .72, -76, 76).toFixed(1)}px`);
+    month.style.removeProperty("--calendar-drag-x");
+    delete month.dataset.dragDirection;
+    window.setTimeout(() => month.classList.remove("is-snapping"), 420);
+
+    if (!moved) return;
+    suppressCalendarClick = true;
+    window.setTimeout(() => { suppressCalendarClick = false; }, 420);
+    if (pointerType !== "touch" && Math.abs(deltaX) > 45) {
+      switchMonth(deltaX < 0 ? 1 : -1);
+    }
+  };
+
+  document.addEventListener("pointerdown", beginCalendarDrag, { passive: true });
+  document.addEventListener("pointermove", moveCalendarDrag, { passive: false });
+  document.addEventListener("pointerup", endCalendarDrag, { passive: true });
+  document.addEventListener("pointercancel", endCalendarDrag, { passive: true });
 
   let wheelCooldown = 0;
   document.addEventListener(
