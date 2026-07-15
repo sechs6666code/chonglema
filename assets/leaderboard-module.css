@@ -53,7 +53,7 @@
 }
 
 .leaderboard-inline-entry {
-  width: min(760px, calc(100% - 40px));
+  width: min(740px, 100%);
   min-height: 78px;
   margin: 17px auto 0;
   padding: 13px 14px;
@@ -1202,7 +1202,7 @@
   }
 
   .leaderboard-inline-entry {
-    width: calc(100% - 32px);
+    width: 100%;
     min-height: 76px;
     margin-top: 14px;
     padding: 12px;

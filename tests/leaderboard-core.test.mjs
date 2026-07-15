@@ -1,6 +1,8 @@
 import assert from "node:assert/strict";
 import {
   calculateCurrentStreak,
+  calculateLongestStreak,
+  calculateLongestStreaks,
   calculateStreaks,
   createRecoveryCode,
   localDateKey,
@@ -22,6 +24,13 @@ assert.equal(localDateKey(now), "2026-07-15");
 assert.equal(calculateCurrentStreak(records, "no", now), 2);
 assert.equal(calculateCurrentStreak(records, "yes", now), 0);
 assert.deepEqual(calculateStreaks(records, now), { ninjaDays: 2, rushDays: 0 });
+assert.equal(calculateLongestStreak(records, "no"), 2);
+assert.equal(calculateLongestStreak(records, "yes"), 2);
+assert.deepEqual(calculateLongestStreaks(records), { ninjaDays: 2, rushDays: 2 });
+assert.equal(calculateLongestStreak({
+  "2026-07-01": "yes",
+  "2026-07-03": "yes",
+}, "yes"), 1, "missing calendar days should break a historical streak");
 assert.equal(
   calculateCurrentStreak({ "2026-07-14": "yes", "2026-07-13": "yes" }, "yes", now),
   2,
