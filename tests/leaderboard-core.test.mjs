@@ -2,8 +2,11 @@ import assert from "node:assert/strict";
 import {
   calculateCurrentStreak,
   calculateStreaks,
+  createRecoveryCode,
   localDateKey,
+  milestoneState,
   normalizePublicId,
+  parseRecoveryCode,
   validatePublicId,
 } from "../assets/leaderboard-core.js";
 
@@ -28,5 +31,23 @@ assert.equal(normalizePublicId("  忍者_07  "), "忍者_07");
 assert.equal(validatePublicId("忍者_07").valid, true);
 assert.equal(validatePublicId("ab").valid, false);
 assert.equal(validatePublicId("包含 空格").valid, false);
+
+const profile = {
+  publicId: "忍者_07",
+  isPublic: true,
+  ownerToken: "owner_token_12345678901234567890",
+};
+const recoveryCode = createRecoveryCode(profile, records);
+assert.match(recoveryCode, /^CLM1\./);
+const recovered = parseRecoveryCode(recoveryCode);
+assert.equal(recovered.valid, true);
+assert.deepEqual(recovered.profile, profile);
+assert.deepEqual(recovered.records, records);
+assert.equal(parseRecoveryCode(`${recoveryCode.slice(0, -1)}X`).valid, false, "tampered recovery codes should fail validation");
+
+assert.equal(milestoneState(2, "ninja").earned.length, 0);
+assert.equal(milestoneState(7, "ninja").currentLabel, "一周忍者");
+assert.equal(milestoneState(30, "rush").currentLabel, "月度连冲");
+assert.equal(milestoneState(365, "ninja").next, null);
 
 console.log("leaderboard core tests passed");
