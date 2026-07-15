@@ -381,6 +381,7 @@
 }
 
 .leaderboard-profile-card,
+.leaderboard-milestones,
 .leaderboard-board-card {
   margin-top: 11px;
   padding: 19px;
@@ -388,6 +389,142 @@
   border-radius: 21px;
   background: color-mix(in srgb, var(--card) 92%, transparent);
   box-shadow: inset 0 1px rgba(255, 255, 255, .75), 0 13px 34px rgba(38, 62, 49, .055);
+}
+
+.leaderboard-milestones [data-leaderboard-badge-count] {
+  padding: 6px 9px;
+  border-radius: 99px;
+  background: color-mix(in srgb, #d7ad56 11%, transparent);
+  color: color-mix(in srgb, #b8862e 82%, var(--text));
+  font-size: 8px;
+  font-weight: 680;
+}
+
+.leaderboard-milestone-list {
+  margin-top: 14px;
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 9px;
+}
+
+.leaderboard-milestone-track {
+  min-width: 0;
+  padding: 13px;
+  border: 1px solid var(--line);
+  border-radius: 16px;
+  background: color-mix(in srgb, var(--solid) 50%, transparent);
+}
+
+.leaderboard-milestone-track[data-milestone-type="rush"] {
+  background: color-mix(in srgb, var(--red) 4%, var(--solid));
+}
+
+.leaderboard-milestone-track > header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.leaderboard-milestone-track > header div {
+  min-width: 0;
+}
+
+.leaderboard-milestone-track > header span {
+  color: var(--muted);
+  display: block;
+  font-size: 8px;
+}
+
+.leaderboard-milestone-track > header strong {
+  max-width: 100%;
+  margin-top: 3px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  display: block;
+  font-size: 12px;
+}
+
+.leaderboard-milestone-track > header em {
+  color: var(--green);
+  flex: none;
+  font-size: 9px;
+  font-style: normal;
+  font-weight: 700;
+}
+
+.leaderboard-milestone-track[data-milestone-type="rush"] > header em {
+  color: var(--red);
+}
+
+.leaderboard-badges {
+  margin-top: 11px;
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: 4px;
+}
+
+.leaderboard-badge {
+  min-width: 0;
+  min-height: 42px;
+  padding: 6px 2px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  color: color-mix(in srgb, var(--muted) 65%, transparent);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+}
+
+.leaderboard-badge b {
+  font-size: 9px;
+  font-variant-numeric: tabular-nums;
+}
+
+.leaderboard-badge small {
+  max-width: 100%;
+  margin-top: 2px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 6px;
+}
+
+.leaderboard-badge.is-earned {
+  border-color: color-mix(in srgb, #d7ad56 34%, var(--line));
+  background: color-mix(in srgb, #e5ba60 12%, var(--card));
+  color: color-mix(in srgb, #b8862e 88%, var(--text));
+  box-shadow: inset 0 1px rgba(255, 255, 255, .45);
+}
+
+.leaderboard-milestone-progress {
+  height: 4px;
+  margin-top: 10px;
+  border-radius: 99px;
+  background: color-mix(in srgb, var(--muted) 10%, transparent);
+  overflow: hidden;
+}
+
+.leaderboard-milestone-progress i {
+  height: 100%;
+  border-radius: inherit;
+  background: linear-gradient(90deg, var(--green), #d7ad56);
+  display: block;
+  transition: width 320ms ease;
+}
+
+.leaderboard-milestone-track[data-milestone-type="rush"] .leaderboard-milestone-progress i {
+  background: linear-gradient(90deg, var(--red), #d7ad56);
+}
+
+.leaderboard-milestone-track > p {
+  margin: 6px 0 0;
+  color: var(--muted);
+  font-size: 7px;
+  line-height: 1.4;
 }
 
 .leaderboard-section-title {
@@ -572,6 +709,160 @@
   cursor: wait;
 }
 
+.leaderboard-recovery {
+  margin-top: 14px;
+  padding-top: 14px;
+  border-top: 1px solid var(--line);
+}
+
+.leaderboard-recovery > div:first-child b {
+  font-size: 10px;
+}
+
+.leaderboard-recovery > div:first-child p {
+  margin: 3px 0 0;
+  color: var(--muted);
+  font-size: 8px;
+}
+
+.leaderboard-recovery-actions,
+.leaderboard-recovery-form-actions {
+  margin-top: 10px;
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 7px;
+}
+
+.leaderboard-recovery-actions button,
+.leaderboard-recovery-form-actions button,
+.leaderboard-recovery-candidate button {
+  min-height: 36px;
+  border: 1px solid var(--line);
+  border-radius: 11px;
+  background: color-mix(in srgb, var(--solid) 58%, transparent);
+  color: var(--text);
+  cursor: pointer;
+  font-size: 9px;
+  font-weight: 630;
+}
+
+.leaderboard-recovery-actions button:first-child,
+.leaderboard-recovery-form-actions button:last-child,
+.leaderboard-recovery-candidate button {
+  border-color: color-mix(in srgb, var(--green) 23%, var(--line));
+  background: color-mix(in srgb, var(--green) 8%, var(--solid));
+  color: color-mix(in srgb, var(--green) 82%, var(--text));
+}
+
+.leaderboard-recovery-form {
+  margin-top: 11px;
+  padding: 12px;
+  border: 1px solid color-mix(in srgb, var(--green) 17%, var(--line));
+  border-radius: 14px;
+  background: color-mix(in srgb, var(--green) 4%, var(--solid));
+}
+
+.leaderboard-recovery-form[hidden] {
+  display: none;
+}
+
+.leaderboard-recovery-form > label {
+  color: var(--muted);
+  font-size: 8px;
+  font-weight: 620;
+}
+
+.leaderboard-recovery-form textarea {
+  width: 100%;
+  min-height: 82px;
+  margin-top: 6px;
+  padding: 10px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  outline: 0;
+  resize: vertical;
+  background: color-mix(in srgb, var(--solid) 72%, transparent);
+  color: var(--text);
+  font: 8px/1.5 ui-monospace, SFMono-Regular, Menlo, monospace;
+}
+
+.leaderboard-recovery-form textarea:focus {
+  border-color: color-mix(in srgb, var(--green) 55%, var(--line));
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--green) 9%, transparent);
+}
+
+.leaderboard-recovery-warning,
+.leaderboard-recovery-status {
+  margin: 6px 0 0;
+  color: #b77a37;
+  font-size: 7px;
+  line-height: 1.45;
+}
+
+.leaderboard-recovery-status:empty {
+  display: none;
+}
+
+.leaderboard-recovery-status[data-tone="success"] {
+  color: var(--green);
+}
+
+.leaderboard-recovery-status[data-tone="error"] {
+  color: var(--red);
+}
+
+.leaderboard-recovery-candidate {
+  margin-top: 9px;
+  padding: 10px;
+  border: 1px solid color-mix(in srgb, var(--green) 24%, var(--line));
+  border-radius: 12px;
+  background: color-mix(in srgb, var(--green) 6%, var(--card));
+}
+
+.leaderboard-recovery-candidate[hidden] {
+  display: none;
+}
+
+.leaderboard-recovery-candidate > div {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.leaderboard-recovery-candidate span,
+.leaderboard-recovery-candidate dt {
+  color: var(--muted);
+  font-size: 7px;
+}
+
+.leaderboard-recovery-candidate strong {
+  font-size: 11px;
+}
+
+.leaderboard-recovery-candidate dl {
+  margin: 8px 0 0;
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 6px;
+}
+
+.leaderboard-recovery-candidate dl > div {
+  padding: 7px;
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--solid) 55%, transparent);
+}
+
+.leaderboard-recovery-candidate dd {
+  margin: 2px 0 0;
+  font-size: 9px;
+}
+
+.leaderboard-recovery-candidate button {
+  width: 100%;
+  margin-top: 9px;
+}
+
 .leaderboard-tabs {
   display: flex;
   align-items: center;
@@ -647,6 +938,27 @@
   color: var(--muted);
   font-size: 8px;
   font-weight: 550;
+}
+
+.leaderboard-rank-insight {
+  min-height: 29px;
+  margin: 8px 0 0;
+  padding: 8px 10px;
+  border-radius: 10px;
+  background: color-mix(in srgb, var(--muted) 6%, transparent);
+  color: var(--muted);
+  font-size: 8px;
+  line-height: 1.5;
+}
+
+.leaderboard-rank-insight[data-tone="up"] {
+  background: color-mix(in srgb, var(--green) 8%, transparent);
+  color: var(--green);
+}
+
+.leaderboard-rank-insight[data-tone="down"] {
+  background: color-mix(in srgb, var(--red) 7%, transparent);
+  color: var(--red);
 }
 
 [data-leaderboard-my-rank] {
@@ -961,8 +1273,13 @@
   }
 
   .leaderboard-profile-card,
+  .leaderboard-milestones,
   .leaderboard-board-card {
     padding: 16px;
+  }
+
+  .leaderboard-milestone-list {
+    grid-template-columns: 1fr;
   }
 }
 
@@ -1027,6 +1344,7 @@
 
   .leaderboard-local-scores article,
   .leaderboard-profile-card,
+  .leaderboard-milestones,
   .leaderboard-board-card {
     border-color: rgba(255, 255, 255, .075);
     box-shadow: inset 0 1px rgba(255, 255, 255, .045), 0 13px 34px rgba(0, 0, 0, .17);
@@ -1037,7 +1355,8 @@
   .leaderboard-overlay,
   .leaderboard-panel,
   .leaderboard-trigger,
-  .leaderboard-inline-entry {
+  .leaderboard-inline-entry,
+  .leaderboard-milestone-progress i {
     transition: none !important;
   }
 

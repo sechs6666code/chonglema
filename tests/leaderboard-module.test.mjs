@@ -22,6 +22,11 @@ Object.defineProperties(globalThis, {
   requestAnimationFrame: { value: window.requestAnimationFrame.bind(window), configurable: true },
 });
 window.navigator.vibrate = () => true;
+let copiedRecoveryCode = "";
+Object.defineProperty(window.navigator, "clipboard", {
+  value: { writeText: async (value) => { copiedRecoveryCode = value; } },
+  configurable: true,
+});
 window.localStorage.setItem("did-you-v1", JSON.stringify({
   "2026-07-15": "no",
   "2026-07-14": "no",
@@ -89,6 +94,27 @@ assert.equal(typeof savedPayload.ownerToken, "string");
 assert.ok(savedPayload.ownerToken.length >= 24);
 assert.match(overlay.textContent, /#1/);
 assert.match(overlay.textContent, /忍者007/);
+assert.equal(overlay.querySelectorAll(".leaderboard-badge").length, 10, "both streak types should render five milestone badges");
+
+overlay.querySelector("[data-recovery-copy]").click();
+await new Promise((resolve) => window.setTimeout(resolve, 10));
+assert.match(copiedRecoveryCode, /^CLM1\./, "the recovery action should copy a portable recovery code");
+overlay.querySelector("[data-recovery-open]").click();
+const recoveryInput = overlay.querySelector("#leaderboard-recovery-code");
+recoveryInput.value = copiedRecoveryCode;
+overlay.querySelector("[data-recovery-verify]").click();
+assert.equal(overlay.querySelector(".leaderboard-recovery-candidate").hidden, false);
+assert.match(overlay.querySelector(".leaderboard-recovery-candidate").textContent, /忍者007/);
+
+window.localStorage.setItem("chonglema-leaderboard-rank-snapshot-v1", JSON.stringify({
+  identity: "忍者007",
+  date: "2026-07-14",
+  previous: { ninja: null, rush: null },
+  current: { ninja: 3, rush: null },
+}));
+overlay.querySelector(".leaderboard-refresh").click();
+await new Promise((resolve) => window.setTimeout(resolve, 30));
+assert.match(overlay.querySelector("[data-leaderboard-rank-insight]").textContent, /今日上升 2 名/);
 
 overlay.querySelector('[data-visibility="private"]').click();
 overlay.querySelector(".leaderboard-save").click();
