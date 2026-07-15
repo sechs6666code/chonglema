@@ -61,8 +61,10 @@
   background:
     radial-gradient(circle at 50% 36%, rgba(111, 224, 178, .22), transparent 42%),
     radial-gradient(circle at 24% 70%, rgba(197, 232, 255, .12), transparent 36%);
+  opacity: calc(.72 + var(--recovery-motion-energy) * .16);
   transform: translate3d(var(--recovery-glow-x), var(--recovery-glow-y), 0);
-  transition: transform 220ms ease-out, opacity 280ms ease;
+  filter: saturate(calc(1 + var(--recovery-motion-energy) * .18));
+  transition: transform 180ms ease-out, opacity 280ms ease, filter 280ms ease;
 }
 
 .recovery-summary {
