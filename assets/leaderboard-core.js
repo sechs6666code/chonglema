@@ -47,6 +47,36 @@ export function calculateStreaks(records, now = new Date()) {
   };
 }
 
+export function calculateLongestStreak(records, value) {
+  const entries = Object.entries(records || {})
+    .map(([key, recordValue]) => ({
+      day: /^\d{4}-\d{2}-\d{2}$/.test(key) ? Date.parse(`${key}T00:00:00Z`) : Number.NaN,
+      value: recordValue,
+    }))
+    .filter((entry) => Number.isFinite(entry.day))
+    .sort((left, right) => left.day - right.day);
+  let longest = 0;
+  let current = 0;
+  let previousDay = null;
+  for (const entry of entries) {
+    if (entry.value === value) {
+      current = previousDay !== null && entry.day - previousDay === 86_400_000 ? current + 1 : 1;
+      longest = Math.max(longest, current);
+    } else {
+      current = 0;
+    }
+    previousDay = entry.day;
+  }
+  return longest;
+}
+
+export function calculateLongestStreaks(records) {
+  return {
+    ninjaDays: calculateLongestStreak(records, "no"),
+    rushDays: calculateLongestStreak(records, "yes"),
+  };
+}
+
 export function normalizePublicId(value) {
   return String(value || "").trim().normalize("NFC");
 }
