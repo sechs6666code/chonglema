@@ -20,6 +20,9 @@
   const controlledSheetState = new WeakMap();
   const scrollRevealSeen = new WeakSet();
   const scrollRevealTriggers = new Set();
+  const scrollDepthTweens = new Set();
+  const scrollDecorationTweens = new WeakMap();
+  const activeMilestoneTimelines = new Set();
   const activeNumberElements = new Set();
   const activeRings = new Set();
   let reducedMotion = reducedMotionQuery.matches;
@@ -27,7 +30,10 @@
   let pendingScan = 0;
   let pendingScrollRefresh = 0;
   let scrollProgressElement = null;
-  let scrollProgressTween = null;
+  let scrollRevealIndex = 0;
+
+  const milestoneDays = [3, 7, 14, 30, 60, 90, 180, 365];
+  const scrollProgressTweens = new Set();
 
   const scrollRevealSelector = [
     ".leaderboard-inline-entry",
@@ -36,6 +42,12 @@
     ".month-summary",
     ".history",
     "footer",
+  ].join(", ");
+
+  const scrollShowcaseSelector = [
+    ".leaderboard-inline-entry",
+    ".stats > .streak-card",
+    ".history",
   ].join(", ");
 
   const leaderboardNumberSelector = [
@@ -211,6 +223,237 @@
     });
   }
 
+  const localDateKey = (value = new Date()) => {
+    const date = value instanceof Date ? value : new Date(value);
+    return [
+      date.getFullYear(),
+      String(date.getMonth() + 1).padStart(2, "0"),
+      String(date.getDate()).padStart(2, "0"),
+    ].join("-");
+  };
+
+  function readLocalRecords() {
+    try {
+      const records = JSON.parse(localStorage.getItem("did-you-v1") || "{}");
+      return records && typeof records === "object" ? records : {};
+    } catch {
+      return {};
+    }
+  }
+
+  function readCurrentStreak(recordType) {
+    const records = readLocalRecords();
+    const date = new Date();
+    let days = 0;
+    while (records[localDateKey(date)] === recordType) {
+      days += 1;
+      date.setDate(date.getDate() - 1);
+    }
+    return days;
+  }
+
+  function milestoneParticleMarkup(count = 28) {
+    return Array.from({ length: count }, (_, index) =>
+      `<i style="--particle:${index}" aria-hidden="true"></i>`).join("");
+  }
+
+  function milestoneRayMarkup(count = 12) {
+    return Array.from({ length: count }, (_, index) =>
+      `<i style="--ray:${index}" aria-hidden="true"></i>`).join("");
+  }
+
+  function animateMilestoneOverlay(overlay, type = "ninja") {
+    if (!overlay || overlay.dataset.gsapMilestone) return null;
+    overlay.dataset.gsapMilestone = "animating";
+    overlay.dataset.milestoneType = type === "rush" ? "rush" : "ninja";
+    overlay.setAttribute("role", "status");
+    overlay.setAttribute("aria-live", "assertive");
+
+    const card = overlay.querySelector(":scope > div:not(.gsap-milestone-fx)");
+    if (!card) return null;
+    card.classList.add("gsap-milestone-card");
+    const core = card.querySelector(":scope > span");
+    const title = card.querySelector(":scope > b");
+    const copy = card.querySelector(":scope > p");
+    core?.classList.add("gsap-milestone-core");
+
+    if (!card.querySelector(".gsap-milestone-kicker")) {
+      const kicker = document.createElement("small");
+      kicker.className = "gsap-milestone-kicker";
+      kicker.textContent = type === "rush" ? "RUSH STREAK UNLOCKED" : "NINJA STREAK UNLOCKED";
+      card.prepend(kicker);
+    }
+
+    const fx = document.createElement("div");
+    fx.className = "gsap-milestone-fx";
+    fx.setAttribute("aria-hidden", "true");
+    fx.innerHTML = `
+      <i class="gsap-milestone-flash"></i>
+      <i class="gsap-milestone-ring ring-one"></i>
+      <i class="gsap-milestone-ring ring-two"></i>
+      <i class="gsap-milestone-ring ring-three"></i>
+      <span class="gsap-milestone-rays">${milestoneRayMarkup()}</span>
+      <span class="gsap-milestone-particles">${milestoneParticleMarkup()}</span>
+    `;
+    overlay.append(fx);
+
+    if (reducedMotion) {
+      overlay.dataset.gsapMilestone = "complete";
+      return null;
+    }
+
+    const kicker = card.querySelector(".gsap-milestone-kicker");
+    const flash = fx.querySelector(".gsap-milestone-flash");
+    const rings = Array.from(fx.querySelectorAll(".gsap-milestone-ring"));
+    const rays = fx.querySelector(".gsap-milestone-rays");
+    const particles = Array.from(fx.querySelectorAll(".gsap-milestone-particles > i"));
+    const vectors = particles.map((_, index) => {
+      const angle = (Math.PI * 2 * index) / particles.length + gsap.utils.random(-0.09, 0.09);
+      const distance = gsap.utils.random(120, 250, 2);
+      return {
+        x: Math.cos(angle) * distance,
+        y: Math.sin(angle) * distance,
+        rotation: gsap.utils.random(-220, 220, 5),
+        scale: gsap.utils.random(0.65, 1.65, 0.05),
+      };
+    });
+
+    let timeline = null;
+    timeline = gsap.timeline({
+      defaults: { ease: "power3.out" },
+      onComplete: () => {
+        activeMilestoneTimelines.delete(timeline);
+        overlay.dataset.gsapMilestone = "complete";
+        fx.remove();
+        gsap.set([overlay, card, core, kicker, title, copy].filter(Boolean), {
+          clearProps: "transform,opacity,visibility,transformOrigin",
+        });
+        if (overlay.classList.contains("gsap-milestone-custom")) overlay.remove();
+      },
+      onInterrupt: () => activeMilestoneTimelines.delete(timeline),
+    });
+    activeMilestoneTimelines.add(timeline);
+
+    timeline
+      .fromTo(overlay, { autoAlpha: 0 }, { autoAlpha: 1, duration: 0.2 }, 0)
+      .fromTo(flash, { scale: 0.2, autoAlpha: 0 }, {
+        scale: 2.4,
+        autoAlpha: 0.9,
+        duration: 0.5,
+        ease: "power2.out",
+      }, 0)
+      .to(flash, { scale: 3.4, autoAlpha: 0, duration: 0.65 }, 0.38)
+      .fromTo(card, {
+        y: 78,
+        z: -180,
+        scale: 0.48,
+        rotationX: 34,
+        rotationZ: -5,
+        autoAlpha: 0,
+      }, {
+        y: 0,
+        z: 0,
+        scale: 1,
+        rotationX: 0,
+        rotationZ: 0,
+        autoAlpha: 1,
+        duration: 0.82,
+        ease: "back.out(1.9)",
+      }, 0.08)
+      .fromTo(rings, { scale: 0.12, rotation: -35, autoAlpha: 0 }, {
+        scale: (index) => 1.7 + index * 0.38,
+        rotation: (index) => 42 + index * 30,
+        autoAlpha: (index) => 0.58 - index * 0.12,
+        duration: 1.25,
+        stagger: 0.07,
+        ease: "expo.out",
+      }, 0.06)
+      .fromTo(rays, { scale: 0.15, rotation: -35, autoAlpha: 0 }, {
+        scale: 1.8,
+        rotation: 28,
+        autoAlpha: 0.72,
+        duration: 1.25,
+        ease: "expo.out",
+      }, 0.05)
+      .fromTo(particles, { x: 0, y: 0, scale: 0, rotation: 0, autoAlpha: 0 }, {
+        x: (index) => vectors[index].x,
+        y: (index) => vectors[index].y,
+        scale: (index) => vectors[index].scale,
+        rotation: (index) => vectors[index].rotation,
+        autoAlpha: 1,
+        duration: 1.05,
+        stagger: 0.008,
+        ease: "power4.out",
+      }, 0.14)
+      .fromTo([kicker, core, title, copy].filter(Boolean), { y: 24, scale: 0.82, autoAlpha: 0 }, {
+        y: 0,
+        scale: 1,
+        autoAlpha: 1,
+        duration: 0.5,
+        stagger: 0.055,
+        ease: "back.out(1.7)",
+      }, 0.32)
+      .to(core, { scale: 1.2, rotation: 8, duration: 0.22, repeat: 1, yoyo: true }, 0.88)
+      .to(particles, {
+        y: "+=58",
+        rotation: "+=150",
+        autoAlpha: 0,
+        duration: 0.9,
+        stagger: 0.006,
+        ease: "power2.in",
+      }, 1.02)
+      .to([rings, rays], { scale: "+=0.8", autoAlpha: 0, duration: 0.75 }, 1.05)
+      .to(card, { y: -18, scale: 1.05, autoAlpha: 0, duration: 0.38, ease: "power3.in" }, 2.12)
+      .to(overlay, { autoAlpha: 0, duration: 0.32, ease: "power2.in" }, 2.18);
+
+    return timeline;
+  }
+
+  function celebrateMilestone(days, type = "ninja") {
+    const value = Number(days);
+    if (!milestoneDays.includes(value)) return null;
+    const current = document.querySelector(".milestone-pop");
+    if (current) {
+      animateMilestoneOverlay(current, type);
+      return current;
+    }
+
+    const overlay = document.createElement("div");
+    overlay.className = "milestone-pop gsap-milestone-custom";
+    overlay.innerHTML = `
+      <div>
+        <span>✦</span>
+        <b>${type === "rush" ? "连冲" : "连续忍住"} ${value} 天</b>
+        <p>里程碑已解锁，继续刷新纪录。</p>
+      </div>
+    `;
+    document.body.append(overlay);
+    animateMilestoneOverlay(overlay, type);
+    if (reducedMotion) window.setTimeout(() => overlay.remove(), 1800);
+    return overlay;
+  }
+
+  function scheduleMilestoneCheck(recordType, previousDays, attempt = 0) {
+    window.setTimeout(() => {
+      const nextDays = readCurrentStreak(recordType);
+      if (nextDays <= previousDays && attempt < 1) {
+        scheduleMilestoneCheck(recordType, previousDays, attempt + 1);
+        return;
+      }
+      if (nextDays <= previousDays || !milestoneDays.includes(nextDays)) return;
+      const type = recordType === "yes" ? "rush" : "ninja";
+      const nativeOverlay = document.querySelector(".milestone-pop");
+      if (nativeOverlay) animateMilestoneOverlay(nativeOverlay, type);
+      else celebrateMilestone(nextDays, type);
+    }, attempt ? 180 : 90);
+  }
+
+  function scanMilestones(scope = document) {
+    scope.querySelectorAll?.(".milestone-pop").forEach((overlay) => {
+      animateMilestoneOverlay(overlay, overlay.dataset.milestoneType || "ninja");
+    });
+  }
+
   function runCheckinTimeline(answer) {
     const hero = answer?.closest(".hero");
     if (!answer || !hero || !hero.classList.contains("completed") || reducedMotion) return;
@@ -290,10 +533,14 @@
     if (isOpeningEditor) return;
 
     const type = answer.classList.contains("yes") ? "yes" : "no";
+    const previousStreakDays = readCurrentStreak(type);
     requestAnimationFrame(() => {
       requestAnimationFrame(() => {
         const selected = document.querySelector(`.hero.completed .answer.${type}.selected`);
-        if (selected) runCheckinTimeline(selected);
+        if (selected) {
+          runCheckinTimeline(selected);
+          scheduleMilestoneCheck(type, previousStreakDays);
+        }
         scanLeaderboardNumbers();
         scanRings();
       });
@@ -451,13 +698,15 @@
     const progress = document.createElement("span");
     progress.className = "gsap-scroll-progress";
     progress.setAttribute("aria-hidden", "true");
-    progress.innerHTML = "<i></i>";
+    progress.innerHTML = "<i></i><b></b><em></em>";
     document.body.append(progress);
     scrollProgressElement = progress;
 
     const bar = progress.firstElementChild;
+    const comet = progress.querySelector("b");
+    const bloom = progress.querySelector("em");
     gsap.set(bar, { scaleX: 0, transformOrigin: "0 50%" });
-    scrollProgressTween = gsap.to(bar, {
+    const progressTween = gsap.to(bar, {
       scaleX: 1,
       ease: "none",
       scrollTrigger: {
@@ -467,22 +716,147 @@
         scrub: 0.18,
       },
     });
+    const cometTween = gsap.to(comet, {
+      x: () => Math.max(0, window.innerWidth - 18),
+      rotation: 720,
+      ease: "none",
+      scrollTrigger: {
+        id: "page-progress-comet",
+        start: 0,
+        end: "max",
+        scrub: 0.32,
+        invalidateOnRefresh: true,
+      },
+    });
+    const bloomTween = gsap.to(bloom, {
+      x: () => Math.max(0, window.innerWidth - 34),
+      scale: 1.45,
+      ease: "none",
+      scrollTrigger: {
+        id: "page-progress-bloom",
+        start: 0,
+        end: "max",
+        scrub: 0.48,
+        invalidateOnRefresh: true,
+      },
+    });
+    [progressTween, cometTween, bloomTween].forEach((tween) => scrollProgressTweens.add(tween));
+  }
+
+  function getScrollLayers(element) {
+    if (element.matches(".leaderboard-inline-entry")) {
+      return Array.from(element.querySelectorAll(
+        ":scope > .leaderboard-inline-icon, :scope > .leaderboard-inline-copy, :scope > .leaderboard-inline-scores, :scope > .leaderboard-inline-cta",
+      ));
+    }
+    if (element.matches(".streak-card")) {
+      return Array.from(element.querySelectorAll(":scope > .wellness-side"));
+    }
+    if (element.matches(".history")) {
+      return Array.from(element.querySelectorAll(":scope > .section-head, :scope > .calendar-month, :scope > .legend"));
+    }
+    if (element.matches(".stat-card")) {
+      return Array.from(element.querySelectorAll(":scope > span, :scope > strong, :scope > small"));
+    }
+    if (element.matches(".catchup")) {
+      return Array.from(element.querySelectorAll(":scope > span, :scope > b"));
+    }
+    return [];
+  }
+
+  function setupScrollDepth(element, orb, wire) {
+    if (!ScrollTrigger || reducedMotion || scrollDecorationTweens.has(orb)) return;
+    const orbTween = gsap.fromTo(orb, {
+      xPercent: -82,
+      yPercent: -38,
+      rotation: -28,
+      scale: 0.72,
+    }, {
+      xPercent: 88,
+      yPercent: 54,
+      rotation: 52,
+      scale: 1.28,
+      ease: "none",
+      scrollTrigger: {
+        trigger: element,
+        start: "clamp(top bottom)",
+        end: "clamp(bottom top)",
+        scrub: 0.72,
+      },
+    });
+    const wireTween = gsap.fromTo(wire, {
+      xPercent: 52,
+      yPercent: 26,
+      rotation: 38,
+      scale: 0.82,
+    }, {
+      xPercent: -44,
+      yPercent: -32,
+      rotation: -58,
+      scale: 1.18,
+      ease: "none",
+      scrollTrigger: {
+        trigger: element,
+        start: "clamp(top bottom)",
+        end: "clamp(bottom top)",
+        scrub: 1.05,
+      },
+    });
+    scrollDecorationTweens.set(orb, [orbTween, wireTween]);
+    scrollDepthTweens.add(orbTween);
+    scrollDepthTweens.add(wireTween);
+  }
+
+  function ensureScrollDecorations(element) {
+    if (!element || reducedMotion) return;
+    element.dataset.gsapShowcase = "true";
+    let orb = element.querySelector(":scope > .gsap-scroll-orb");
+    let wire = element.querySelector(":scope > .gsap-scroll-wire");
+    let sheen = element.querySelector(":scope > .gsap-scroll-sheen");
+    if (!orb) {
+      orb = document.createElement("span");
+      orb.className = "gsap-scroll-orb";
+      orb.setAttribute("aria-hidden", "true");
+      element.append(orb);
+    }
+    if (!wire) {
+      wire = document.createElement("span");
+      wire.className = "gsap-scroll-wire";
+      wire.setAttribute("aria-hidden", "true");
+      element.append(wire);
+    }
+    if (!sheen) {
+      sheen = document.createElement("span");
+      sheen.className = "gsap-scroll-sheen";
+      sheen.setAttribute("aria-hidden", "true");
+      element.append(sheen);
+    }
+    setupScrollDepth(element, orb, wire);
   }
 
   function revealScrollBatch(elements) {
     elements.forEach((element) => {
       element.dataset.gsapScroll = "waiting";
       element.classList.remove("motion-card", "motion-enter");
+      const order = scrollRevealIndex++;
       const compactCard = element.matches(".stats > .stat-card:not(.streak-card)");
       const compactIndex = compactCard
         ? Array.from(element.parentElement?.children || []).indexOf(element)
         : 0;
+      const direction = compactCard ? (compactIndex % 2 ? 1 : -1) : (order % 2 ? 1 : -1);
+      element.dataset.gsapScrollDirection = direction > 0 ? "right" : "left";
       gsap.set(element, {
-        x: compactCard ? (compactIndex % 2 ? 22 : -22) : 0,
-        y: element.matches(".history") ? 46 : 34,
-        scale: element.matches("footer") ? 1 : 0.97,
+        x: element.matches("footer, .month-summary") ? 0 : direction * (element.matches(".history") ? 82 : 62),
+        y: element.matches(".history") ? 82 : 58,
+        z: element.matches("footer") ? 0 : -140,
+        scale: element.matches("footer") ? 0.92 : 0.86,
+        rotationX: element.matches("footer") ? 0 : 17,
+        rotationY: element.matches("footer, .month-summary") ? 0 : direction * -11,
+        rotationZ: element.matches(".history") ? direction * 1.8 : direction * 0.8,
+        skewY: element.matches("footer") ? 0 : direction * 1.25,
         autoAlpha: 0,
         transformOrigin: "50% 100%",
+        transformPerspective: 1100,
       });
     });
 
@@ -494,22 +868,61 @@
       onEnter: (batch) => {
         batch.forEach((element) => {
           element.dataset.gsapScroll = "entering";
-        });
-        gsap.to(batch, {
-          x: 0,
-          y: 0,
-          scale: 1,
-          autoAlpha: 1,
-          duration: 0.72,
-          stagger: 0.085,
-          ease: "power3.out",
-          overwrite: "auto",
-          onComplete: () => {
-            batch.forEach((element) => {
+          const direction = element.dataset.gsapScrollDirection === "right" ? 1 : -1;
+          const layers = getScrollLayers(element);
+          const sheen = element.querySelector(":scope > .gsap-scroll-sheen");
+          let timeline = null;
+          timeline = gsap.timeline({
+            defaults: { ease: "expo.out" },
+            onComplete: () => {
               element.dataset.gsapScroll = "entered";
-            });
-            gsap.set(batch, { clearProps: "transform,opacity,visibility,transformOrigin" });
-          },
+              gsap.set([element, ...layers, sheen].filter(Boolean), {
+                clearProps: "transform,opacity,visibility,transformOrigin",
+              });
+            },
+          });
+          timeline.to(element, {
+            x: 0,
+            y: 0,
+            z: 0,
+            scale: 1,
+            rotationX: 0,
+            rotationY: 0,
+            rotationZ: 0,
+            skewY: 0,
+            autoAlpha: 1,
+            duration: 1.08,
+            ease: "back.out(1.42)",
+            overwrite: "auto",
+          }, 0);
+          if (layers.length) {
+            timeline.fromTo(layers, {
+              x: direction * 26,
+              y: 28,
+              z: -90,
+              rotationY: direction * -8,
+              scale: 0.9,
+              autoAlpha: 0,
+            }, {
+              x: 0,
+              y: 0,
+              z: 0,
+              rotationY: 0,
+              scale: 1,
+              autoAlpha: 1,
+              duration: 0.82,
+              stagger: 0.065,
+              ease: "power4.out",
+            }, 0.18);
+          }
+          if (sheen) {
+            timeline.fromTo(sheen, { xPercent: -190, autoAlpha: 0 }, {
+              xPercent: 230,
+              autoAlpha: 0.86,
+              duration: 0.92,
+              ease: "power2.inOut",
+            }, 0.12);
+          }
         });
       },
     });
@@ -519,6 +932,7 @@
   function scanScrollMotion(scope = document) {
     if (!ScrollTrigger || reducedMotion) return;
     ensureScrollProgress();
+    document.querySelectorAll(scrollShowcaseSelector).forEach(ensureScrollDecorations);
     const elements = Array.from(scope.querySelectorAll?.(scrollRevealSelector) || [])
       .filter((element) => !scrollRevealSeen.has(element));
     if (!elements.length) return;
@@ -532,12 +946,23 @@
     pendingScrollRefresh = 0;
     scrollRevealTriggers.forEach((trigger) => trigger.kill?.());
     scrollRevealTriggers.clear();
-    scrollProgressTween?.kill?.();
-    scrollProgressTween = null;
+    scrollDepthTweens.forEach((tween) => {
+      tween.scrollTrigger?.kill?.();
+      tween.kill?.();
+    });
+    scrollDepthTweens.clear();
+    scrollProgressTweens.forEach((tween) => {
+      tween.scrollTrigger?.kill?.();
+      tween.kill?.();
+    });
+    scrollProgressTweens.clear();
     scrollProgressElement?.remove();
     scrollProgressElement = null;
+    document.querySelectorAll(".gsap-scroll-orb, .gsap-scroll-wire, .gsap-scroll-sheen").forEach((element) => element.remove());
     document.querySelectorAll(scrollRevealSelector).forEach((element) => {
       element.dataset.gsapScroll = "entered";
+      delete element.dataset.gsapShowcase;
+      delete element.dataset.gsapScrollDirection;
       gsap.set(element, { clearProps: "transform,opacity,visibility,transformOrigin" });
     });
   }
@@ -550,11 +975,22 @@
       scanRings();
       scanSheets();
       scanScrollMotion();
+      scanMilestones();
     });
   }
 
   function stopActiveMotion() {
     stopScrollMotion();
+    activeMilestoneTimelines.forEach((timeline) => timeline.kill?.());
+    activeMilestoneTimelines.clear();
+    document.querySelectorAll(".milestone-pop").forEach((overlay) => {
+      const card = overlay.querySelector(":scope > div:not(.gsap-milestone-fx)");
+      const targets = [overlay, card, ...Array.from(card?.children || [])].filter(Boolean);
+      gsap.set(targets, { clearProps: "transform,opacity,visibility,transformOrigin" });
+      overlay.querySelector(".gsap-milestone-fx")?.remove();
+      if (overlay.classList.contains("gsap-milestone-custom")) overlay.remove();
+      else overlay.dataset.gsapMilestone = "complete";
+    });
     activeNumberElements.forEach((element) => {
       const target = numberTargetState.get(element);
       const complete = numberCompletion.get(element);
@@ -633,6 +1069,7 @@
   window.ChonglemaGsapMotion = Object.freeze({
     animateNumber,
     captureLeaderboard,
+    celebrateMilestone,
     playLeaderboardFlip,
     scanRings,
     usesScrollTrigger: Boolean(ScrollTrigger),

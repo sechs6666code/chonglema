@@ -4,7 +4,9 @@
 .gsap-motion-ready .month-sheet,
 .gsap-motion-ready .month-panel,
 .gsap-motion-ready .history-sheet,
-.gsap-motion-ready .history-panel {
+.gsap-motion-ready .history-panel,
+.gsap-motion-ready .milestone-pop,
+.gsap-motion-ready .milestone-pop > div {
   animation: none !important;
 }
 
@@ -54,10 +56,11 @@
   top: env(safe-area-inset-top, 0px);
   right: 0;
   left: 0;
-  height: 3px;
+  height: 4px;
   overflow: visible;
   pointer-events: none;
-  background: color-mix(in srgb, var(--line) 36%, transparent);
+  background: color-mix(in srgb, var(--line) 28%, transparent);
+  box-shadow: 0 1px rgba(255, 255, 255, .34);
 }
 
 .gsap-scroll-progress > i {
@@ -67,15 +70,294 @@
   border-radius: 0 999px 999px 0;
   background: linear-gradient(90deg, #31c68b, color-mix(in srgb, #31c68b 68%, #a9f3d5));
   box-shadow:
-    0 0 10px rgba(49, 198, 139, .46),
-    0 0 22px rgba(49, 198, 139, .2);
+    0 0 12px rgba(49, 198, 139, .62),
+    0 0 28px rgba(49, 198, 139, .32);
   transform: scaleX(0);
   transform-origin: 0 50%;
+}
+
+.gsap-scroll-progress > b,
+.gsap-scroll-progress > em {
+  position: absolute;
+  top: 50%;
+  left: 0;
+  display: block;
+  pointer-events: none;
+  transform: translateY(-50%);
+}
+
+.gsap-scroll-progress > b {
+  width: 14px;
+  height: 14px;
+  border: 2px solid rgba(225, 255, 244, .92);
+  border-radius: 4px 9px 4px 9px;
+  background: #31c68b;
+  box-shadow:
+    0 0 12px rgba(49, 198, 139, .92),
+    0 0 34px rgba(49, 198, 139, .62),
+    0 0 64px rgba(49, 198, 139, .32);
+}
+
+.gsap-scroll-progress > em {
+  width: 34px;
+  height: 12px;
+  border-radius: 999px;
+  background: linear-gradient(90deg, transparent, rgba(136, 255, 211, .54));
+  filter: blur(4px);
+}
+
+[data-gsap-showcase="true"] {
+  isolation: isolate;
+  overflow: hidden;
+  transform-style: preserve-3d;
+  perspective: 1100px;
+}
+
+[data-gsap-showcase="true"] > :not(.gsap-scroll-orb, .gsap-scroll-wire, .gsap-scroll-sheen) {
+  position: relative;
+  z-index: 2;
+}
+
+.gsap-scroll-orb,
+.gsap-scroll-wire,
+.gsap-scroll-sheen {
+  position: absolute !important;
+  display: block;
+  margin: 0 !important;
+  pointer-events: none;
+  user-select: none;
+}
+
+.gsap-scroll-orb {
+  z-index: 0 !important;
+  top: -42%;
+  left: -16%;
+  width: 66%;
+  aspect-ratio: 1;
+  border-radius: 50%;
+  background:
+    radial-gradient(circle at 38% 35%, rgba(207, 255, 237, .78), rgba(49, 198, 139, .24) 28%, transparent 68%);
+  opacity: .66;
+  filter: blur(3px);
+  mix-blend-mode: screen;
+}
+
+.gsap-scroll-wire {
+  z-index: 1 !important;
+  right: -24%;
+  bottom: -72%;
+  width: 78%;
+  aspect-ratio: 1;
+  border: 1px solid rgba(49, 198, 139, .28);
+  border-radius: 42% 58% 62% 38%;
+  box-shadow:
+    inset 0 0 34px rgba(49, 198, 139, .08),
+    0 0 30px rgba(49, 198, 139, .08);
+  opacity: .72;
+}
+
+.gsap-scroll-wire::before,
+.gsap-scroll-wire::after {
+  content: "";
+  position: absolute;
+  inset: 14%;
+  border: 1px dashed rgba(120, 231, 190, .23);
+  border-radius: 56% 44% 38% 62%;
+}
+
+.gsap-scroll-wire::after {
+  inset: 30%;
+  border-style: solid;
+  border-color: rgba(255, 255, 255, .34);
+}
+
+.gsap-scroll-sheen {
+  z-index: 5 !important;
+  top: -55%;
+  bottom: -55%;
+  left: -12%;
+  width: 26%;
+  background: linear-gradient(90deg, transparent, rgba(255, 255, 255, .7), transparent);
+  opacity: 0;
+  filter: blur(1px);
+  transform: skewX(-16deg);
+  mix-blend-mode: screen;
 }
 
 [data-gsap-scroll="waiting"],
 [data-gsap-scroll="entering"] {
   will-change: transform, opacity;
+}
+
+[data-gsap-scroll="entering"] .gsap-scroll-orb,
+[data-gsap-scroll="entering"] .gsap-scroll-wire,
+[data-gsap-scroll="entering"] .gsap-scroll-sheen {
+  will-change: transform, opacity;
+}
+
+/* Deliberately theatrical milestone unlock sequence. */
+.milestone-pop[data-gsap-milestone] {
+  --milestone-accent: #31c68b;
+  --milestone-accent-rgb: 49, 198, 139;
+  overflow: hidden;
+  perspective: 1200px;
+  background:
+    radial-gradient(circle at 50% 50%, rgba(var(--milestone-accent-rgb), .22), transparent 42%),
+    rgba(5, 14, 11, .38);
+  backdrop-filter: blur(14px) saturate(140%);
+}
+
+.milestone-pop[data-milestone-type="rush"] {
+  --milestone-accent: #ed7468;
+  --milestone-accent-rgb: 237, 116, 104;
+}
+
+.milestone-pop > .gsap-milestone-card {
+  position: relative;
+  z-index: 3;
+  min-width: min(310px, calc(100vw - 44px));
+  padding: 30px 34px 28px;
+  overflow: hidden;
+  border-color: rgba(255, 255, 255, .88);
+  background:
+    linear-gradient(145deg, rgba(255, 255, 255, .96), rgba(242, 250, 246, .86));
+  box-shadow:
+    0 34px 110px rgba(0, 0, 0, .34),
+    0 0 70px rgba(var(--milestone-accent-rgb), .24),
+    inset 0 1px rgba(255, 255, 255, .96);
+  transform-style: preserve-3d;
+}
+
+.milestone-pop[data-milestone-type="rush"] > .gsap-milestone-card {
+  background: linear-gradient(145deg, rgba(255, 250, 249, .97), rgba(255, 239, 235, .88));
+}
+
+.gsap-milestone-kicker {
+  display: block;
+  margin-bottom: 15px;
+  color: var(--milestone-accent);
+  font-size: 9px;
+  font-weight: 850;
+  letter-spacing: .2em;
+  line-height: 1;
+}
+
+.milestone-pop .gsap-milestone-core {
+  width: 62px;
+  height: 62px;
+  margin-bottom: 16px;
+  background: var(--milestone-accent);
+  font-size: 27px;
+  box-shadow:
+    0 12px 30px rgba(var(--milestone-accent-rgb), .32),
+    0 0 0 8px rgba(var(--milestone-accent-rgb), .1),
+    inset 0 1px rgba(255, 255, 255, .52);
+}
+
+.milestone-pop .gsap-milestone-card > b {
+  font-size: 24px;
+  font-weight: 820;
+  letter-spacing: -.045em;
+}
+
+.milestone-pop .gsap-milestone-card > p {
+  margin-top: 8px;
+  font-size: 12px;
+}
+
+.milestone-pop > .gsap-milestone-fx {
+  position: absolute;
+  z-index: 1;
+  inset: 0;
+  display: block;
+  min-width: 0;
+  padding: 0;
+  overflow: visible;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
+  backdrop-filter: none;
+  transform: none;
+}
+
+.gsap-milestone-flash,
+.gsap-milestone-ring,
+.milestone-pop .gsap-milestone-rays,
+.milestone-pop .gsap-milestone-particles {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  display: block;
+  width: 280px;
+  height: 280px;
+  margin: -140px 0 0 -140px;
+  border-radius: 50%;
+  pointer-events: none;
+  background: none;
+}
+
+.gsap-milestone-flash {
+  background: radial-gradient(circle, rgba(255, 255, 255, .98), rgba(var(--milestone-accent-rgb), .48) 24%, transparent 66%);
+  filter: blur(3px);
+}
+
+.gsap-milestone-ring {
+  border: 1px solid rgba(var(--milestone-accent-rgb), .68);
+  box-shadow:
+    0 0 28px rgba(var(--milestone-accent-rgb), .24),
+    inset 0 0 28px rgba(var(--milestone-accent-rgb), .12);
+}
+
+.gsap-milestone-ring.ring-two {
+  width: 230px;
+  height: 230px;
+  margin: -115px 0 0 -115px;
+  border-style: dashed;
+}
+
+.gsap-milestone-ring.ring-three {
+  width: 176px;
+  height: 176px;
+  margin: -88px 0 0 -88px;
+  border-color: rgba(255, 255, 255, .66);
+}
+
+.milestone-pop .gsap-milestone-rays > i {
+  position: absolute;
+  bottom: 50%;
+  left: calc(50% - 1px);
+  width: 2px;
+  height: 168px;
+  border-radius: 999px;
+  background: linear-gradient(to top, rgba(var(--milestone-accent-rgb), .7), transparent 74%);
+  transform: rotate(calc(var(--ray) * 30deg));
+  transform-origin: 50% 100%;
+}
+
+.milestone-pop .gsap-milestone-particles > i {
+  position: absolute;
+  top: calc(50% - 6px);
+  left: calc(50% - 4px);
+  width: 8px;
+  height: 15px;
+  border-radius: 3px 8px 3px 8px;
+  background: var(--milestone-accent);
+  box-shadow: 0 0 12px rgba(var(--milestone-accent-rgb), .64);
+}
+
+.milestone-pop .gsap-milestone-particles > i:nth-child(3n) {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: #fff;
+}
+
+.milestone-pop .gsap-milestone-particles > i:nth-child(4n) {
+  width: 4px;
+  height: 21px;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--milestone-accent) 58%, #fff);
 }
 
 @media (prefers-reduced-motion: reduce) {
@@ -84,6 +366,13 @@
   }
 
   .gsap-scroll-progress {
+    display: none !important;
+  }
+
+  .gsap-scroll-orb,
+  .gsap-scroll-wire,
+  .gsap-scroll-sheen,
+  .gsap-milestone-fx {
     display: none !important;
   }
 

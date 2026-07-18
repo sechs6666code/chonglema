@@ -110,6 +110,12 @@ window.gsap = {
       revert() {},
     };
   },
+  utils: {
+    random(minimum, maximum, increment = 0) {
+      const midpoint = (Number(minimum) + Number(maximum)) / 2;
+      return increment ? Math.round(midpoint / increment) * increment : midpoint;
+    },
+  },
 };
 window.Flip = {
   getState(targets, options) {
@@ -156,6 +162,8 @@ assert.equal(window.ChonglemaGsapMotion.usesScrollTrigger, true);
 assert.ok(calls.some((call) => call.type === "scroll-batch"));
 assert.equal(window.document.querySelector(".stat-card").dataset.gsapScroll, "entered");
 assert.ok(window.document.querySelector(".gsap-scroll-progress"));
+assert.ok(window.document.querySelector(".gsap-scroll-progress > b"), "the scroll comet should be mounted");
+assert.ok(window.document.querySelector(".history > .gsap-scroll-orb"), "showcase cards should receive a depth layer");
 
 answer.click();
 await new Promise((resolve) => window.setTimeout(resolve, 80));
@@ -180,6 +188,15 @@ overlay.hidden = false;
 overlay.classList.add("is-open");
 await new Promise((resolve) => window.setTimeout(resolve, 35));
 assert.ok(calls.some((call) => call.type === "fromTo" && call.target === overlay.querySelector(".leaderboard-panel")));
+
+const milestone = window.ChonglemaGsapMotion.celebrateMilestone(30, "rush");
+assert.ok(milestone?.classList.contains("gsap-milestone-custom"));
+assert.equal(milestone.dataset.milestoneType, "rush");
+assert.equal(milestone.querySelectorAll(".gsap-milestone-particles > i").length, 28);
+assert.match(milestone.textContent, /连冲 30 天/);
+assert.ok(calls.some((call) => call.type === "timeline-fromTo" && call.target === milestone));
+await new Promise((resolve) => window.setTimeout(resolve, 15));
+assert.equal(window.document.querySelector(".gsap-milestone-custom"), null, "custom milestone effects should clean up");
 
 window.dispatchEvent(new window.Event("pagehide"));
 await new Promise((resolve) => window.setTimeout(resolve, 20));
